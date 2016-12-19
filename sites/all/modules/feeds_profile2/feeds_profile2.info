@@ -1,0 +1,14 @@
+name = Feeds Profile2
+package = Feeds
+description = Adds Profile2 integration for Feeds.
+core = 7.x
+
+dependencies[] = feeds
+dependencies[] = profile2
+
+; Information added by Drupal.org packaging script on 2014-08-18
+version = "7.x-1.2"
+core = "7.x"
+project = "feeds_profile2"
+datestamp = "1408366133"
+

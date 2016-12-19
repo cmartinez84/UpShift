@@ -1,0 +1,65 @@
+<?php
+
+/**
+ * Implements hook_feeds_processor_targets_alter() from Feeds.
+ */
+function feeds_profile2_feeds_processor_targets_alter(&$targets, $entity_type, $bundle_name) {
+  // For user imports, add a target field for every field in each Profile2
+  // bundle.
+  if ($entity_type == 'user') {
+    foreach (profile2_get_types() as $profile_type) {
+      $fields = field_info_instances('profile2', $profile_type->type);
+      foreach ($fields as $field) {
+        $targets["profile2:{$field['bundle']}:{$field['field_name']}"] = array(
+          'name' => t($field['label']),
+          'description' => t($field['description']),
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_feeds_after_save() from Feeds.
+ */
+function feeds_profile2_feeds_after_save(FeedsSource $source, $entity, $item, $entity_id) {
+  $profiles = array();
+
+  // Loop through mappings to compile values for each Profile2 bundle & field.
+  $config = $source->importer->getConfig();
+  foreach ($config['processor']['config']['mappings'] as $mapping) {
+    if (strpos($mapping['target'], 'profile2:') === 0) {
+      list($entity_type, $bundle, $field_name) = explode(':', $mapping['target']);
+      $profiles[$bundle][$field_name] = $item[strtolower($mapping['source'])];
+    }
+  }
+
+  // Save or update each profile.
+  foreach ($profiles as $bundle => $values) {
+    $profile = NULL;
+
+    // If editing user, load Profile2 entity.
+    if (!empty($entity_id)) {
+      $profile = profile2_load_by_user($entity->uid, $bundle);
+    }
+
+    // If profile is still not available, create a new one.
+    if (empty($profile)) {
+      $profile = profile2_create(array(
+        'type' => $bundle,
+        'uid' => $entity->uid,
+      ));
+    }
+
+    // Load entity wrapper.
+    $profile_wrapper = entity_metadata_wrapper('profile2', $profile);
+
+    // Set mapped field values.
+    foreach ($values as $field_name => $value) {
+      $profile_wrapper->{$field_name}->set($value);
+    }
+
+    // Save profile.
+    $profile_wrapper->save();
+  }
+}
