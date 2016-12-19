@@ -1,0 +1,18 @@
+name = Devel Entity
+description = Allows developer show for another entity devel.
+package = Development
+
+version = 7.x-1.x-dev
+core = 7.x
+
+dependencies[] = entity
+dependencies[] = devel
+
+tags[] = developer
+
+; Information added by drupal.org packaging script on 2013-09-30
+version = "7.x-1.x-dev"
+core = "7.x"
+project = "devel_entity"
+datestamp = "1380569345"
+

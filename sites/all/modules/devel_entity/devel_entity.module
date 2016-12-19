@@ -1,0 +1,107 @@
+<?php
+
+/**
+ * @file 
+ * 	module devel_entity.
+ */
+
+/**
+ * Implement hook_menu().
+ */
+function devel_entity_menu() {
+  //get all entity.
+  $devel_entity_info = get_devel_entity_info();
+  $items = array();
+
+  foreach ($devel_entity_info as $info) {
+    $type = $info['entity type'];
+    $path = $info['view path'];
+    $count = count(explode('/', $path));
+
+    // Add devel tab menu.
+    $items[$path . '/devel'] = array(
+      'title' => 'Devel',
+      'page callback' => 'devel_entity_load_object',
+      'page arguments' => array($type, $count-1, $info['label']),
+      'access arguments' => array('access devel information'),
+      'type' => MENU_LOCAL_TASK,
+      'file' => 'devel_entity.pages.inc',
+      'weight' => 100,
+    );
+    $items[$path . '/devel/load'] = array(
+      'title' => 'Load',
+      'type' => MENU_DEFAULT_LOCAL_TASK,
+    );
+    $items[$path . '/devel/render'] = array(
+      'title' => 'Render',
+      'page callback' => 'devel_entity_render_object',
+      'page arguments' => array($type, $count-1, $info['label']),
+      'access arguments' => array('access devel information'),
+      'file' => 'devel_entity.pages.inc',
+      'type' => MENU_LOCAL_TASK,
+      'weight' => 100,
+    );
+  }
+
+  return $items;
+}
+
+/**
+ * Get all entity path info.
+ */
+function get_devel_entity_info() {
+  // Use the advanced drupal_static() pattern, since this is called very often.
+  static $drupal_static_fast;
+  if (!isset($drupal_static_fast)) {
+    $drupal_static_fast['devel_entity_info'] = &drupal_static(__FUNCTION__);
+  }
+  $devel_entity_info = &$drupal_static_fast['devel_entity_info'];
+
+  if (empty($devel_entity_info)) {
+    if ($cache = cache_get("devel_entity_info")) {
+      $devel_entity_info = $cache->data;
+    }
+    else {
+      $devel_entity_info = module_invoke_all('devel_entity_info');
+      foreach ($devel_entity_info as $key => &$info) {
+        if (!isset($info['entity type'])) {
+          // set default for entity type.
+          $info['entity type'] = $key;
+        }
+      }
+      // Let other modules alter the entity devel info.
+      drupal_alter('devel_entity_info', $devel_entity_info);
+      cache_set("devel_entity_info", $devel_entity_info);
+    }
+  }
+
+  if (empty($entity_type)) {
+    return $devel_entity_info;
+  }
+  elseif (isset($devel_entity_info[$entity_type])) {
+    return $devel_entity_info[$entity_type];
+  }
+}
+
+/**
+ * Implement hook_devel_entity_info().
+ * Example for entity type.
+ * Test for profile2.
+ */
+function profile2_page_devel_entity_info() {
+  $info = array();
+  // test for profile2 page menu.
+  
+  foreach (profile2_get_types() as $type_name => $type) {
+    if (!empty($type->data['use_page'])) {
+      $path = profile2_page_get_base_path($type) . '/%profile2_by_uid';
+      $info['profile2:' . $type_name] = array(
+        'entity type' => 'profile2',
+        'view path' => $path,
+        'label' => 'profile',
+      );
+    }
+  }
+
+  return $info;
+}

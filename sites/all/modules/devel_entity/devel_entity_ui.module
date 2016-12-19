@@ -1,0 +1,260 @@
+<?php
+/**
+ * @file
+ * Script for devel entity module.
+ */
+
+/**
+ * Implements hook_permission()
+ */
+function devel_entity_ui_permission() {
+  return array(
+    'devel entity administrator' => array(
+      'title' => t('Devel enitty administrator'),
+      'description' => t('Perform administration for devel entity user interface.'),
+    )
+  );
+}
+
+/**
+ * Implements hook_menu().
+ */
+function devel_entity_ui_menu() {
+  $items['admin/config/development/entity-devel'] = array(
+    'title' => 'Devel entity config',
+    'description' => 'Find and manage content.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('devel_entity_ui_admin_config'),
+    'access arguments' => array('devel entity administrator'), //@TODO permission.
+    'weight' => -10,
+  );
+
+  return $items;
+}
+
+/**
+ * Function load all config of devel entity.
+ */
+function devel_entity_ui_load_config($entity_type = NULL, $bundle = NULL) {
+  $select = db_select('devel_entity_config', 'cfg')
+            ->fields('cfg'); //array('id', 'entity_type', 'path', 'config')
+  $result = array();
+  if (!empty($entity_type)) {
+    if (!is_array($entity_type)) {
+      $entity_type = array($entity_type);
+    }
+    $select->condition('entity_type', $entity_type, 'IN');
+  }
+
+  foreach ($select->execute() as $config) {
+    $result[$config->entity_type] = $config;
+  }
+
+  if (count($entity_type) == 1) {
+    $result = reset($result);
+  }
+
+  return $result;
+}
+
+/**
+ * Helper function for save config entity devel path.
+ */
+function _devel_entity_ui_save_config_path($entity_type, $path, $config = array()) {
+  $old_config = devel_entity_ui_load_config($entity_type);
+  $record = array(
+    'entity_type' => $entity_type,
+    'path' => $path,
+    'bundle' => '*',
+    'config' => $config,
+    'id' => NULL,
+  );
+  $key = NULL;
+  // Inserting $record (data) into the database. Here $table variable contains the name of the table.
+  if (!empty($old_config)) {
+    if (empty($config)) {
+      $record['config'] = $old_config->config;
+      $record['id'] = $old_config->id;
+    }
+    $key = 'id';
+  }
+  drupal_write_record('devel_entity_config', $record, $key);
+
+  return $record['id'];
+}
+
+/**
+ * Implements hook_devel_entity_info().
+ */
+function devel_entity_ui_devel_entity_info() {
+  /// Implements for all entity that is configed.
+  $config = devel_entity_ui_load_config();
+  $info = array();
+
+  foreach ($config as $entity_type => $value) {
+    $info[$entity_type] = array(
+      'entity type' => $entity_type,
+      'view path' => $value->path,
+      'label' => $entity_type,
+    );
+  }
+
+  return $info;
+}
+
+/**
+ * Form admin config for devel entity.
+ */
+function devel_entity_ui_admin_config($form, &$form_state) {
+  $default = devel_entity_ui_load_config();
+
+  $form['table'] = array(
+    '#tree' => TRUE,
+    '#theme' => 'devel_entity_ui_config_form_table',
+  );
+
+  $info = entity_get_info();
+  $entity_in_core = array('node', 'file', 'comment', 'taxonomy_term', 'user', 'taxonomy_vocabulary', 'profile2');
+  foreach ($info as $entity_type => $entity_info) {
+    if (in_array($entity_type, $entity_in_core)) {
+      // default in core all entity is support from devel module.
+      continue;
+    }
+    $form['table'][$entity_type]['title'] = array(
+      '#markup' => $entity_info['label'],
+    );
+    $form['table'][$entity_type]['path'] = array(
+      '#type' => 'textfield',
+      '#title' => t('System path for detail of @label', array('@label' => $entity_info['label'])),
+      '#title_display' => 'invisible',
+      '#default_value' => empty($default[$entity_type]->path) ? '' : $default[$entity_type]->path,
+    );
+  }
+
+  $form['action'] = array('#type' => 'action');
+  $form['action']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save'),
+  );
+  $form['action']['reset'] = array(
+    '#type' => 'submit',
+    '#value' => t('Cancel'),
+  );
+  return $form;
+}
+
+/**
+ * Validated for form user input data.
+ */
+function devel_entity_ui_admin_config_validate($form, &$form_state) {
+  $values = $form_state['values']['table'];
+  $values = array_filter($values, function($val) {
+    return !empty($val['path']);
+  });
+  $menu_exists = menu_router_build();
+  $menu_defined = _devel_entity_get_menu_defined_link();
+
+  $menu_defined = array_keys($menu_defined);
+  foreach ($values as $entity_type => $path) {
+    if (!in_array($path['path'], $menu_defined)) {
+      form_set_error("table][$entity_type][path", t('Path of entity @label is not exists.', array('@label' => $entity_type)));
+    }
+  }
+
+  $form_state['values']['entity_path_config'] = $values;
+}
+
+/**
+ * Get all path form user defined.
+ */
+function _devel_entity_get_menu_defined_link() {
+  $cached = &drupal_static(__FUNCTION__);
+  if ($cached) {
+    return $cached;
+  }
+  $callbacks = array();
+
+  foreach (module_implements('menu') as $module) {
+    $router_items = call_user_func($module . '_menu');
+    if (isset($router_items) && is_array($router_items)) {
+      $callbacks = array_merge($callbacks, $router_items);
+    }
+  }
+  // Alter the menu as defined in modules, keys are like user/%user.
+  drupal_alter('menu', $callbacks);
+
+  $cached = $callbacks;
+  return $cached;
+}
+
+/**
+ * Submit callback.
+ */
+function devel_entity_ui_admin_config_submit($form, &$form_state) {
+  $paths = $form_state['values']['entity_path_config'];
+  // save it into database.
+  foreach ($paths as $entity_type => $path) {
+    _devel_entity_ui_save_config_path($entity_type, $path['path']);
+  }
+  // clear cache for entity_info and menu.
+  entity_info_cache_clear();
+  menu_rebuild();
+}
+
+/**
+ * Implements hook_theme().
+ */
+function devel_entity_ui_theme() {
+  $theme['devel_entity_ui_config_form_table'] = array(
+    'render element' => 'element',
+  );
+  return $theme;
+}
+
+/**
+ * Returns HTML for the table in the administrative listing/overview form.
+ *
+ * @param $variables
+ *   An associative array containing:
+ *   - element: A render element representing the table in the form.
+ *
+ * @ingroup themeable
+ */
+function theme_devel_entity_ui_config_form_table($variables) {
+  $element = $variables['element'];
+
+  $rows = array();
+  foreach (element_children($element) as $id) {
+    // Classify the weight element for TableDrag.
+    $element[$id]['weight']['#attributes']['class'] = array('mytable-order-weight');
+
+    // Mark the table row as draggable for TableDrag.
+    $row = array(
+      'data' => array(),
+      'class' => array('draggable'),
+    );
+    // Render the table columns.
+    $row['data'][] = drupal_render($element[$id]['title']);
+    $row['data'][] = drupal_render($element[$id]['path']);
+
+    $rows[] = $row;
+  }
+
+  // Build the table header.
+  $header = array(
+    t('Entity type'),
+    t('Path'),
+  );
+  // Render the table.
+  // Note: For TableSelect instead of TableDrag, you would have specified
+  //   'tableselect' as render element #type and passed the $rows as 'options'
+  //   instead of 'rows'.
+  $output = theme('table', array(
+    'header' => $header,
+    'rows' => $rows,
+    'attributes' => array('id' => 'devel-entity-config-title'),
+  ));
+
+  $output .= drupal_render_children($element);
+  return $output;
+}

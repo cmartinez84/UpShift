@@ -1,0 +1,56 @@
+<?php
+/**
+ * @file
+ * Script install for devel entity ui module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function devel_entity_ui_schema() {
+  $schema['devel_entity_config'] = array(
+    'description' => 'The config of devel entity.',
+    'fields' => array(
+      'id' => array(
+        'description' => 'The primary identifier for a node.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'entity_type' => array(
+        'description' => 'name of entity.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'bundle' => array(
+        'description' => 'Bundle of entity.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'path' => array(
+        'description' => 'The {path} that is show detail of entity.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'config' => array(
+        'type' => 'blob',
+        'length' => 'normal',
+        'serialize' => TRUE,
+        'description' => 'The config of entity for devel',
+      )
+    ),
+    'indexes' => array(
+      'entity_type'         => array('entity_type'),
+      'bundle'              => array('bundle'),
+      'path'                => array('path'),
+    ),
+    'primary key' => array('id'),
+  );
+  return $schema;
+}
