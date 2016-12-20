@@ -1,0 +1,100 @@
+<?php
+/**
+ * @file
+ * Schema function for the Group member profiles project.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function gprofile_schema() {
+  $schema['gprofile'] = array(
+    'description' => 'Stores group member profile entities.',
+    'fields' => array(
+      'pid' => array(
+        'description' => 'Primary Key: Unique member profile ID.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'type' => array(
+        'description' => 'The {gprofile_type}.name for the profile.',
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'mid' => array(
+        'description' => 'The {group_membership}.mid for the profile.',
+        'type' => 'int',
+        'default' => 0,
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+    ),
+    'indexes' => array(
+      'type' => array('type'),
+      'mid' => array('mid'),
+    ),
+    'unique keys' => array(
+      'type_per_member' => array('type', 'mid'),
+    ),
+    'foreign keys' => array(
+      'gprofile_type' => array(
+        'table' => 'gprofile_type',
+        'columns' => array('type' => 'name'),
+      ),
+      'group_membership' => array(
+        'table' => 'group_membership',
+        'columns' => array('mid' => 'mid'),
+      ),
+    ),
+    'primary key' => array('pid'),
+  );
+
+  $schema['gprofile_type'] = array(
+    'description' => 'Stores group member profile type entities.',
+    'fields' => array(
+      'tid' => array(
+        'description' => 'Primary Key: Unique member profile type ID.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'name' => array(
+        'description' => 'The machine-readable name of this profile type.',
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+      ),
+      'label' => array(
+        'description' => 'The human-readable name of this profile type.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'status' => array(
+        'description' => 'The exportable status of the entity.',
+        'type' => 'int',
+        'size' => 'tiny',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        // ENTITY_CUSTOM
+        'default' => 0x01,
+      ),
+      'module' => array(
+        'description' => 'The name of the providing module if the entity has been defined in code.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+    ),
+    'unique keys' => array(
+      'name' => array('name'),
+    ),
+    'primary key' => array('tid'),
+  );
+
+  return $schema;
+}

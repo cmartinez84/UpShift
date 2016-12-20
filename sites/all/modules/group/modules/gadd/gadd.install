@@ -1,0 +1,60 @@
+<?php
+/**
+ * @file
+ * Install, update and uninstall functions for the Group add member project.
+ */
+
+/**
+ * Schema API definition for the added_on column.
+ *
+ * Helper function for re-using the added_on column definition.
+ */
+function _gadd_added_on() {
+  return array(
+    'description' => 'The Unix timestamp when the user was added.',
+    'type' => 'int',
+    'unsigned' => TRUE,
+  );
+}
+
+/**
+ * Schema API definition for the added_by column.
+ *
+ * Helper function for re-using the added_by column definition.
+ */
+function _gadd_added_by() {
+  return array(
+    'description' => 'The {users}.uid of the adding user.',
+    'type' => 'int',
+    'unsigned' => TRUE,
+  );
+}
+
+/**
+ * Implements hook_install().
+ */
+function gadd_install() {
+  db_update('system')
+    ->fields(array('weight' => 1))
+    ->condition('name', 'gadd')
+    ->execute();
+
+  db_add_field('group_membership', 'added_on', _gadd_added_on());
+  db_add_field('group_membership', 'added_by', _gadd_added_by());
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function gadd_uninstall() {
+  db_drop_field('group_membership', 'added_on');
+  db_drop_field('group_membership', 'added_by');
+}
+
+/**
+ * Remove default values from 'added_on' and 'added_by'.
+ */
+function gadd_update_7001() {
+  db_change_field('group_membership', 'added_on', 'added_on', _gadd_added_on());
+  db_change_field('group_membership', 'added_by', 'added_by', _gadd_added_by());
+}

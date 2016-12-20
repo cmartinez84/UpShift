@@ -1,0 +1,68 @@
+<?php
+/**
+ * @file
+ * Contains add member functionality for the Group module.
+ */
+
+/**
+ * Load our router functions without polluting the .module file.
+ */
+require_once 'gadd.router.inc';
+
+/**
+ * Implements hook_schema_alter().
+ *
+ * Informs Drupal of the changes we made to {group_membership}.
+ */
+function gadd_schema_alter(&$schema) {
+  // Include the install file for its helper functions.
+  module_load_install('gadd');
+
+  // Add the added_on and added_by fields.
+  $schema['group_membership']['fields']['added_on'] = _gadd_added_on();
+  $schema['group_membership']['fields']['added_by'] = _gadd_added_by();
+
+  // Add the added_by foreign key.
+  $schema['group_membership']['foreign keys']['adder'] = array(
+    'table' => 'users',
+    'columns' => array('added_by' => 'uid'),
+  );
+}
+
+/**
+ * Implements hook_entity_property_info_alter().
+ *
+ * Informs Drupal of the changes we made to {group_membership}.
+ */
+function gadd_entity_property_info_alter(&$info) {
+  $properties = &$info['group_membership']['properties'];
+  $properties['added_on'] = array(
+    'label' => t('Added on'),
+    'description' => t('The date when the member was added.'),
+    'type' => 'date',
+    'getter callback' => 'entity_property_verbatim_date_get',
+    'setter callback' => 'entity_property_verbatim_set',
+    'schema field' => 'added_on',
+  );
+
+  $properties['added_by'] = array(
+    'label' => t('Added by'),
+    'description' => t('The user who added the member.'),
+    'type' => 'user',
+    'setter callback' => 'entity_property_verbatim_set',
+    'schema field' => 'added_by',
+  );
+}
+
+/**
+ * Implements hook_admin_paths().
+ */
+function gadd_admin_paths() {
+  if (variable_get('group_admin_theme')) {
+    $paths = array(
+      'group/*/add' => TRUE,
+    );
+
+    return $paths;
+  }
+}

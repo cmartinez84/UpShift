@@ -1,0 +1,15 @@
+name= Shoutbox domain
+description = Restrict Shouts to specific domains using the domain module
+core = 7.x
+package = Shoutbox
+dependencies[] = domain
+
+files[] = shoutbox_domain.install
+files[] = shoutbox_domain.module
+
+; Information added by Drupal.org packaging script on 2016-05-25
+version = "7.x-1.1"
+core = "7.x"
+project = "shoutbox"
+datestamp = "1464184752"
+

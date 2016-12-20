@@ -1,0 +1,14 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the shoutbox_points module.
+ */
+
+/**
+ * Implements hook_uninstall().
+ */
+function shoutbox_points_uninstall() {
+  variable_del('shoutbox_points_delete_points');
+  variable_del('shoutbox_points_amount');
+}

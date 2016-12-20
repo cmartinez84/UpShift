@@ -1,0 +1,38 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the shoutbox_domain module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function shoutbox_domain_schema() {
+  $schema['shoutbox_domain'] = array(
+    'description' => 'Link shouts to their respected domains.',
+    'fields' => array(
+      'shout_id' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'The shout id',
+      ),
+      'domain_id' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'The domain id',
+      ),
+    ),
+    'primary key' => array('shout_id'),
+  );
+  return $schema;
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function shoutbox_domain_uninstall() {
+  
+}

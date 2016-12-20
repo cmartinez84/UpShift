@@ -1,0 +1,16 @@
+name = Shoutbox points
+core = 7.x
+description = Extends shoutbox functionality to User points
+dependencies[] = shoutbox
+dependencies[] = userpoints
+package = Shoutbox
+
+files[] = shoutbox_points.install
+files[] = shoutbox_points.module
+
+; Information added by Drupal.org packaging script on 2016-05-25
+version = "7.x-1.1"
+core = "7.x"
+project = "shoutbox"
+datestamp = "1464184752"
+

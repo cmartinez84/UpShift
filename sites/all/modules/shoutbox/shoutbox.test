@@ -1,0 +1,454 @@
+<?php
+
+/**
+ * @file
+ * Shoutbox testing.
+ */
+class ShoutboxBaseTestCase extends DrupalWebTestCase {
+
+  protected $sb_super_user;
+  protected $sb_view_user;
+  protected $sb_non_user;
+  protected $sb_edit_user;
+
+  public function setUp() {
+    parent::setUp('shoutbox');  // Enable any modules required for the test
+    // Create and log in our user. The user has the arbitrary privilege
+    // 'extra special edit any simpletest_example' which the code uses
+    // to grant access.
+    $this->sb_view_user = $this->drupalCreateUser(array('access shoutbox'));
+    // Shoutbox super user.
+    $this->sb_super_user = $this->drupalCreateUser(array(
+      'administer shoutbox',
+      'access shoutbox'
+    ));
+    $this->sb_non_user = $this->drupalCreateUser(array());
+    $this->sb_edit_user = $this->drupalCreateUser(array(
+      'access shoutbox',
+      'post shouts',
+      'edit own shouts',
+      'post shouts without approval'
+    ));
+
+    // Admin user for configuring blocks.
+    $admin_user = $this->drupalCreateUser(array('administer blocks'));
+    $this->drupalLogin($admin_user);
+    // Set block title to confirm that the interface is available.
+    $this->drupalPost('admin/structure/block/manage/shoutbox/configure', array('title' => $this->randomName(8)), t('Save block'));
+    // $this->assertText(t('The block configuration has been saved.'), t('Block configuration set.'));
+    // Set the block to a region to confirm block is available.
+    $edit = array();
+    $edit['blocks[shoutbox_shoutbox][region]'] = 'footer';
+    $this->drupalPost('admin/structure/block', $edit, t('Save blocks'));
+    // $this->assertText(t('The block settings have been updated.'), t('Block successfully move to footer region.'));
+    $this->drupalLogout();
+  }
+
+  /**
+   * Given a shout, queries the database for the id of the shout.
+   */
+  function getShoutId($message, $uid) {
+    $id = db_query('SELECT shout_id FROM {shoutbox} WHERE shout = :shout AND uid = :uid', array(
+      ':shout' => $message,
+      ':uid' => $uid,
+    ))->fetchField();
+    // debug($id);
+    return $id;
+  }
+
+  function getMessage($id) {
+    $message = db_query('SELECT shout FROM {shoutbox} WHERE shout_id = :shout_id', array(':shout_id' => $id))->fetchField();
+    // debug($id);
+    return $message;
+  }
+
+  /**
+   * Returns an array of all shout ids.
+   */
+  function getAllShoutIds() {
+    $result = db_query_range('SELECT shout_id FROM {shoutbox}', array(), 20);
+    $ids = array();
+    foreach ($result as $id) {
+      $ids[] = $id->shout_id;
+    }
+    // debug($ids);
+    return $ids;
+  }
+
+}
+
+class ShoutboxBaseWithShoutsTestCase extends ShoutboxBaseTestCase {
+
+  protected $sb_users;
+
+  public function setUp() {
+    parent::setUp();  // Enable any modules required for the test.
+    $this->sb_users = array();
+    for ($i = 0; $i < 5; $i++) {
+      $sb_edit_user = $this->drupalCreateUser(array(
+        'access shoutbox',
+        'post shouts',
+        'edit own shouts',
+        'post shouts without approval'
+      ));
+      $this->drupalLogin($sb_edit_user);
+      $message = $this->randomName(32) . ' ' . $this->randomName(5);
+      $edit = array();
+      $edit['message'] = $message;
+      $this->drupalPost(NULL, $edit, t('Shout'));
+      $this->drupalLogout();
+      $this->sb_users[] = $sb_edit_user;
+    }
+
+    foreach ($this->sb_users as $user) {
+      $this->drupalLogin($user);
+      $message = $this->randomName(32) . ' ' . $this->randomName(5);
+      $edit = array();
+      $edit['message'] = $message;
+      $this->drupalPost(NULL, $edit, t('Shout'));
+      $this->drupalLogout();
+    }
+  }
+
+}
+
+class ShoutboxViewTestCase extends ShoutboxBaseTestCase {
+
+  public static function getInfo() {
+    return array(
+      'name' => 'Shoutbox View',
+      'description' => 'Ensure that shoutbox block shows up and has a form for posting shouts.',
+      'group' => 'Shoutbox',
+    );
+  }
+
+  public function setUp() {
+    parent::setUp();
+    // Login as user with view pemissions.
+    $this->drupalLogin($this->sb_view_user);
+  }
+
+  /**
+   * Test that we can get an edit form.
+   */
+  function testShoutboxViewForm() {
+
+    // Verify block appears in a block..
+    $this->drupalGet('');
+    // If a 'block' view not generated, this title would not appear.
+    $this->assertText(t('Shoutbox'), 'Shoutbox appears in block.');
+    $this->assertText(t('There are currently no shouts'), 'There should be no shouts');
+
+    // Verify that we don't have permission to edit the shoutbox
+    $this->assertText(t('You\'re not permitted to post shouts.'), 'User does not have permission to post a shout.');
+    // Logout and login back in as a user who can post shouts.
+    $this->drupalLogout();
+    $this->drupalLogin($this->sb_super_user);
+    $this->drupalGet('');
+    // make sure form is available
+    $this->assertFieldById('edit-message', '', 'The edit-messsage exists on the page');
+  }
+
+  /**
+   * Test that anonymous users can access shoutbox.
+   */
+  function testShoutboxViewAnon() {
+    $this->drupalLogout();
+    $this->drupalGet('');
+    $this->assertNoText(t('Shoutbox'), 'Shoutbox appears in block.');
+    $this->assertNoText(t('There are currently no shouts'), 'There should be no shouts');
+    $messages = array();
+
+    for ($i = 0; $i < 5; $i++) {
+      $sb_edit_user = $this->drupalCreateUser(array(
+        'access shoutbox',
+        'post shouts',
+        'edit own shouts',
+        'post shouts without approval'
+      ));
+      $this->drupalLogin($sb_edit_user);
+      $message = $this->randomName(32) . ' ' . $this->randomName(5);
+      $edit = array();
+      $edit['message'] = $message;
+      $this->drupalPost(NULL, $edit, t('Shout'));
+      $this->drupalLogout();
+      $messages[] = $message;
+    }
+    user_role_grant_permissions(DRUPAL_ANONYMOUS_RID, array(
+      'access shoutbox',
+    ));
+    $this->drupalGet('');
+    $this->assertText(t('Shoutbox'), 'Shoutbox appears in block.');
+    // Verify that we don't have permission to edit the shoutbox.
+    $this->assertText(t('You\'re not permitted to post shouts.'), 'User does not have permission to post a shout.');
+    foreach ($messages as $message) {
+      $this->assertText($message, 'Message appears in the block.');
+    }
+  }
+
+}
+
+class ShoutboxEditTestCase extends ShoutboxBaseTestCase {
+
+  public static function getInfo() {
+    return array(
+      'name' => 'Shoutbox edit',
+      'description' => 'Ensure that editing works and proper access control is handled',
+      'group' => 'Shoutbox',
+    );
+  }
+
+  public function setUp() {
+    parent::setUp();
+    $this->drupalLogin($this->sb_edit_user);
+  }
+
+  /**
+   * Test that we can get an edit form.
+   */
+  function testShoutboxEditForm() {
+    $this->drupalGet('');
+    // Make sure form is available.
+    $this->assertFieldById('edit-message', '', 'The edit-messsage exists on the page');
+    $message = $this->randomName(32) . ' ' . $this->randomName(5);
+    $edit = array();
+    $edit['message'] = $message;
+    $this->drupalPost(NULL, $edit, t('Shout'));
+    // Make sure shout appears on page.
+    $this->drupalGet('');
+    $this->assertText($message, 'Shout appears in block.');
+
+    // Now lets try to edit it.
+    // Get id from database.
+    $id = $this->getShoutId($message, $this->sb_edit_user->uid);
+    $href = 'shout/' . $id . '/edit';
+    // The link should exist.
+    $this->assertLinkByHref($href, 0, 'Edit link should exist');
+    $this->drupalGet($href);
+    $this->assertText('Author');
+    $href = 'user/' . $this->sb_edit_user->uid;
+    $this->assertLinkByHref($href, 0, 'User link should exist');
+    $this->assertText('Changed');
+    $this->assertText('Shout');
+    $this->assertFieldById('edit-shout', $message, 'The edit-shout filed exists on the page');
+    $new_message = $this->randomName(10) . ' ' . $this->randomName(20);
+    $edit = array();
+    $edit['shout'] = $new_message;
+    $this->drupalPost(NULL, $edit, t('Update'));
+    $this->assertText(t('Your shout has been saved.'), 'Saved message appears on page.');
+    $this->drupalGet('');
+    $this->assertText($new_message, 'Shout appears in block.');
+    $this->assertNoText($message, 'Old shout should not appear in block.');
+  }
+
+  /**
+   * Test that user without edit permissions cannot edit.
+   */
+  function testShoutboxCannotEditForm() {
+    $this->drupalGet('');
+    // Make sure form is available.
+    $this->assertFieldById('edit-message', '', t('The edit-messsage exists on the page'));
+    $message = $this->randomName(32) . ' ' . $this->randomName(5);
+    $edit = array();
+    $edit['message'] = $message;
+    $this->drupalPost(NULL, $edit, t('Shout'));
+    // Make sure shout appears on page.
+    $this->drupalGet('');
+    $this->assertText($message, 'Shout appears in block.');
+    $id = $this->getShoutId($message, $this->sb_edit_user->uid);
+    $this->drupalLogout();
+    $this->drupalLogin($this->sb_non_user);
+    $this->assertNoFieldById('edit-message', '', 'The edit-messsage exists on the page');
+    $this->assertNoText(t('Shoutbox'), 'Shoutbox appears in block.');
+    $this->assertNoText(t('There are currently no shouts'), 'There should be no shouts');
+    // Now lets try to edit it.
+    // Get id from database.
+    $href = 'shout/' . $id . '/edit';
+    // The link should exist.
+    $this->assertNoLinkByHref($href, 0, 'Edit link should exist');
+    $this->drupalGet($href);
+    $this->assertResponse(403, t('User can edit shout without permission'));
+    $this->assertNoText(t('Author'));
+  }
+
+}
+
+class ShoutboxDeleteTestCase extends ShoutboxBaseTestCase {
+
+  public static function getInfo() {
+    return array(
+      'name' => 'Shoutbox delete',
+      'description' => 'Ensure that deleting works and proper access control is handled',
+      'group' => 'Shoutbox',
+    );
+  }
+
+  public function setUp() {
+    parent::setUp();
+    $this->sb_delete_user = $this->drupalCreateUser(array(
+      'access shoutbox',
+      'post shouts',
+      'delete own shouts',
+      'post shouts without approval'
+    ));
+    $this->drupalLogin($this->sb_delete_user);
+  }
+
+  /**
+   * Test that we can delete a shout.
+   */
+  function testShoutboxDeleteForm() {
+    $this->drupalGet('');
+    // Make sure form is available.
+    $this->assertFieldById('edit-message', '', 'The edit-messsage exists on the page');
+    $message = $this->randomName(32) . ' ' . $this->randomName(5);
+    $edit = array();
+    $edit['message'] = $message;
+    $this->drupalPost(NULL, $edit, t('Shout'));
+    // Make sure shout appears on page.
+    $this->drupalGet('');
+    $this->assertText($message, 'Shout appears in block.');
+
+    // Now lets try to delete it.
+    // Get id from database.
+    $id = $this->getShoutId($message, $this->sb_delete_user->uid);
+    $href = 'shout/' . $id . '/delete';
+    // The link should exist.
+    $this->assertLinkByHref($href, 0, 'Delete link should exist');
+    $urls = $this->xpath('//div[@id=\'shoutbox-body\']/table/tbody//a[contains(@href, :href)]', array(':href' => $href));
+    $url_target = $this->getAbsoluteUrl($urls[0]['href']);
+    $this->drupalGet($url_target);
+    $this->assertResponse(200, t('User can click delete shout link.'));
+
+    $this->assertText(t('Are you sure you want to delete this shout?'), 'Confirmation text should exist on page');
+    $this->assertText(t('This action cannot be undone.'), 'Cannot be undone text should exist on page');
+    $this->assertLink('Cancel', 0, 'Cancel link exists on page.');
+    $this->assertFieldById('edit-submit', NULL, 'The submit button exists on the page');
+    $this->drupalPost(NULL, array(), t('Confirm'));
+    $this->assertNoText($message, 'Old shout should not appear in block.');
+    $this->assertText(t('There are currently no shouts'), 'There should be no shouts');
+  }
+
+}
+
+class ShoutboxModerateTestCase extends ShoutboxBaseWithShoutsTestCase {
+
+  public static function getInfo() {
+    return array(
+      'name' => 'Shoutbox moderate',
+      'description' => 'Ensure that moderation works and proper access control is handled',
+      'group' => 'Shoutbox',
+    );
+  }
+
+  public function setUp() {
+    parent::setUp();
+    $this->sb_moderator = $this->drupalCreateUser(array(
+      'access shoutbox',
+      'post shouts',
+      'delete own shouts',
+      'moderate shoutbox',
+      'post shouts without approval'
+    ));
+    $this->drupalLogin($this->sb_moderator);
+  }
+
+  /**
+   * Test that we can moderate a shout.
+   */
+  function testShoutboxModerateForm() {
+    $shout_ids = $this->getAllShoutIds();
+    $this->drupalGet('');
+    $href = '';
+    $message = '';
+    // Make sure the moderate links are available for each shout.
+    foreach ($shout_ids as $id) {
+      $href = 'shout/' . $id . '/unpublish';
+      $message = $this->getMessage($id);
+      $this->assertLinkByHref($href, 0, 'Moderate link should exist');
+    }
+    $urls = $this->xpath('//div[@id=\'shoutbox-body\']/table/tbody//a[contains(@href, :href)]', array(':href' => $href));
+    $url_target = $this->getAbsoluteUrl($urls[0]['href']);
+    $this->drupalGet($url_target);
+    $this->assertResponse(200, t('User can click unpublish link.'));
+    $this->assertText(t('Are you sure you want to unpublish this shout?'), 'Confirmation text should exist on page');
+    $this->assertText(t('This action cannot be undone.'), 'Cannot be undone text should exist on page');
+    $this->assertLink('Cancel', 0, 'Cancel link exists on page.');
+    $this->assertFieldById('edit-submit', NULL, 'The submit button exists on the page');
+    $this->drupalPost(NULL, array(), t('Confirm'));
+    $this->assertText($message, 'Old shout should appear in block.');
+    $this->drupalLogout();
+    $this->drupalLogin($this->sb_edit_user);
+    $this->drupalGet('');
+    $this->assertNoText($message, 'Old shout should not appear in block.');
+    $this->drupalLogout();
+    $this->drupalLogin($this->sb_moderator);
+    $href = 'shout/' . $id . '/publish';
+    $this->assertLinkByHref($href, 0, 'Unmoderate link should exist');
+    $urls = $this->xpath('//div[@id=\'shoutbox-body\']/table/tbody//a[contains(@href, :href)]', array(':href' => $href));
+    $url_target = $this->getAbsoluteUrl($urls[0]['href']);
+    $this->drupalGet($url_target);
+    $this->assertResponse(200, t('User can click publish link.'));
+    $this->assertText(t('Are you sure you want to publish this shout?'), 'Confirmation text should exist on page');
+    $this->assertText(t('This action cannot be undone.'), 'Cannot be undone text should exist on page');
+    $this->assertLink('Cancel', 0, 'Cancel link exists on page.');
+    $this->assertFieldById('edit-submit', NULL, 'The submit button exists on the page');
+    $this->drupalPost(NULL, array(), t('Confirm'));
+    $this->assertText($message, 'Old shout should appear in block.');
+    $this->drupalLogout();
+    $this->drupalLogin($this->sb_edit_user);
+    $this->drupalGet('');
+    $this->assertText($message, 'Old shout should appear in block.');
+    $this->drupalLogout();
+  }
+
+  /**
+   * Test users who need approval before shouts are accepted.
+   */
+  function testShoutboxModeratedUser() {
+    $sb_moded_user = $this->drupalCreateUser(array(
+      'access shoutbox',
+      'post shouts',
+      'edit own shouts',
+    ));
+    $this->drupalLogin($sb_moded_user);
+    $message = $this->randomName(32) . ' ' . $this->randomName(5);
+    $edit = array();
+    $edit['message'] = $message;
+    $this->drupalPost(NULL, $edit, t('Shout'));
+    $this->drupalGet('');
+    $this->assertText($message, 'Shout appears in block.');
+    $this->drupalLogout();
+    $this->drupalLogin($this->sb_edit_user);
+    $this->drupalGet('');
+    $this->assertNoText($message, 'Moderated shout should not appear in block.');
+    $this->drupalLogout();
+
+    // Unmoderate the shout.
+    $id = $this->getShoutId($message, $sb_moded_user->uid);
+    $this->drupalLogin($this->sb_moderator);
+    $href = 'shout/' . $id . '/publish';
+    $this->assertLinkByHref($href, 0, 'Unmoderate link should exist');
+    $urls = $this->xpath('//div[@id=\'shoutbox-body\']/table/tbody//a[contains(@href, :href)]', array(':href' => $href));
+    $url_target = $this->getAbsoluteUrl($urls[0]['href']);
+    $this->drupalGet($url_target);
+    $this->assertResponse(200, t('User can click publish link.'));
+    $this->assertText(t('Are you sure you want to publish this shout?'), 'Confirmation text should exist on page');
+    $this->assertText(t('This action cannot be undone.'), 'Cannot be undone text should exist on page');
+    $this->assertLink('Cancel', 0, 'Cancel link exists on page.');
+    $this->assertFieldById('edit-submit', NULL, 'The submit button exists on the page');
+    $this->drupalPost(NULL, array(), t('Confirm'));
+    $this->assertText($message, 'Old shout should appear in block.');
+    $this->drupalLogout();
+    $this->drupalLogin($this->sb_edit_user);
+    $this->drupalGet('');
+    $this->assertText($message, 'Old shout should appear in block.');
+    $this->drupalLogout();
+
+    $this->drupalLogin($sb_moded_user);
+    $this->drupalGet('');
+    $this->assertText($message, 'Old shout should appear in block.');
+    $this->drupalLogout();
+  }
+
+}

@@ -1,0 +1,344 @@
+<?php
+/**
+ * @file
+ * Contains Subgroup functionality for the Group module.
+ *
+ * Please note that this only adds a UI and access checks for creating
+ * subgroups. Nothing stops you from still programmatically creating
+ * subgroups with Group::addSubgroup(). Using both at the same time is
+ * strongly discouraged unless you know what you are doing.
+ */
+
+/**
+ * Load our entity functions without polluting the .module file.
+ */
+require_once 'ggroup.entity.inc';
+
+/**
+ * Load our router functions without polluting the .module file.
+ */
+require_once 'ggroup.router.inc';
+
+/**
+ * Implements hook_schema_alter().
+ *
+ * Informs Drupal of the changes we made to {group_membership}.
+ */
+function ggroup_schema_alter(&$schema) {
+  // Include the install file for its helper functions.
+  module_load_install('ggroup');
+
+  // Add the parent_mid field.
+  $schema['group_membership']['fields']['parent_mid'] = _ggroup_parent_mid();
+
+  // Add the heritage field.
+  $schema['group_membership']['fields']['heritage'] = _ggroup_heritage();
+
+  // Add the parent_mid foreign key.
+  $schema['group_membership']['foreign keys']['parent_mid'] = array(
+    'table' => 'group_membership',
+    'columns' => array('parent_mid' => 'mid'),
+  );
+}
+
+/**
+ * Implements hook_theme().
+ */
+function ggroup_theme() {
+  $theme['ggroup_inheritance_table'] = array(
+    'render element' => 'element',
+    'file' => 'theme/ggroup.config.inc',
+  );
+
+  return $theme;
+}
+
+/**
+ * Determines the inheritance a membership triggers.
+ *
+ * @param GroupMembership $group_membership
+ *   The membership to get inheritance data for.
+ *
+ * @return array
+ *   An array of roles to inherit, keyed by the group id. If a membership
+ *   should be inherited without any roles, an empty array will be returned.
+ */
+function ggroup_get_inheritance(GroupMembership $group_membership) {
+  // Create an EMW to reduce the code below.
+  $emw = entity_metadata_wrapper('group_membership', $group_membership);
+
+  // Retrieve the child entities for the membership's group.
+  $entities = $emw->group->value()->getEntities();
+
+  // Retrieve the membership's group type configuration array.
+  $config = $emw->group->group_type->value()->config;
+
+  // Without subgroups or subgroup configuration, there is nothing to do.
+  if (empty($entities['group']) || empty($config['subgroup'])) {
+    return array();
+  }
+
+  // Inheritance data will be stored here.
+  $memberships = array();
+
+  // Check inheritance for the configured subgroups.
+  foreach ($config['subgroup'] as $type => $data) {
+    // Only act if there are subgroups of this type.
+    if (empty($entities['group'][$type])) {
+      continue;
+    }
+
+    // Reset the inherited roles on every iteration.
+    $inherited = array();
+
+    // Check if the membership triggers any inherited roles.
+    foreach ($data as $role => $inherits) {
+      // If the member had the required role, grant the inherited roles.
+      if ($role == 'member' || in_array($role, $group_membership->roles)) {
+        $inherited += array_filter($inherits);
+      }
+    }
+
+    // Add the inherited roles to the list.
+    if (!empty($inherited)) {
+      // We don't need to set 'member' explicitly, so remove it.
+      unset($inherited['member']);
+
+      // Turn the $inherited array into a valid roles array.
+      $inherited = array_keys($inherited);
+
+      // Set the actual roles array for every inherited membership.
+      foreach (array_keys($entities['group'][$type]) as $gid) {
+        $memberships[$gid] = $inherited;
+      }
+    }
+  }
+
+  return $memberships;
+}
+
+/**
+ * Trigger the inheritance downwards for a membership.
+ *
+ * @param GroupMembership $parent
+ *   The membership to check and run inheritance for towards subgroups.
+ * @param array $filter
+ *   (optional) An array of group ids to limit the inheritance run to. Can be
+ *   used to boost performance when targeting specific subgroups to (re)run
+ *   inheritance towards.
+ */
+function ggroup_run_member_inheritance(GroupMembership $parent, array $filter = array()) {
+  // Retrieve the membership status info.
+  $status_info = group_membership_status_info();
+
+  // Inactive memberships are not inherited.
+  if (empty($status_info[$parent->status]['active'])) {
+    return;
+  }
+
+  // Check for any possible inherited memberships.
+  $inherited = ggroup_get_inheritance($parent);
+
+  // Create the inherited memberships along with the original one.
+  foreach ($inherited as $gid => $roles) {
+    // Skip if the group id isn't in the filter.
+    if (!empty($filter) && !in_array($gid, $filter)) {
+      continue;
+    }
+
+    // Take special care if the membership exists already.
+    if ($group_membership = group_membership_load($gid, $parent->uid)) {
+      // Update the roles for clean inherited memberships.
+      if ($group_membership->status == 'inherited') {
+        $group_membership->heritage['initial'] = $roles;
+        $group_membership->roles = $roles;
+        $group_membership->save();
+      }
+      // Retain modifications for overridden memberships.
+      elseif ($group_membership->status == 'inherited-overridden') {
+        $granted = $group_membership->heritage['granted'];
+        $revoked = $group_membership->heritage['revoked'];
+
+        // Update the initial heritage data.
+        $group_membership->heritage['initial'] = $roles;
+
+        // Check for previous grants that are now part of the heritage package
+        // and remove them from the heritage data.
+        $obsolete = array_intersect($granted, $roles);
+        $group_membership->heritage['granted'] = array_diff($granted, $obsolete);
+
+        // Check for previous revoked roles that are no longer part of the
+        // heritage package and remove them from the heritage data.
+        $obsolete = array_diff($revoked, $roles);
+        $group_membership->heritage['revoked'] = array_diff($revoked, $obsolete);
+
+        // Rebuild the roles property based on the newly calculated heritage.
+        $roles = array_merge($roles, $group_membership->heritage['granted']);
+        $roles = array_diff($roles, $group_membership->heritage['revoked']);
+
+        // Finally, update the inherited membership.
+        $group_membership->roles = $roles;
+        $group_membership->save();
+      }
+    }
+
+    // Otherwise, create an inherited membership.
+    else {
+      $values = array(
+        'gid' => $gid,
+        'uid' => $parent->uid,
+        'roles' => $roles,
+        'status' => 'inherited',
+        'parent_mid' => $parent->mid,
+        'heritage' => array(
+          'initial' => $roles,
+          'granted' => array(),
+          'revoked' => array(),
+        ),
+      );
+
+      $group_membership = entity_create('group_membership', $values);
+      $group_membership->save();
+    }
+  }
+}
+
+/**
+ * Run the inheritance logic for an entire group type.
+ *
+ * This is done as a batch operation because it could potentially try to load,
+ * alter and save a lot of GroupMembership entities.
+ *
+ * @param GroupType $group_type
+ *   The group type to (re-)run all inheritance for.
+ * @param bool $form_submit
+ *   (optional) Whether this function was called from a form submit.
+ */
+function ggroup_run_group_type_inheritance(GroupType $group_type, $form_submit = TRUE) {
+  // First select all group ids of this type.
+  $gids = db_select('groups', 'g')
+    ->fields('g', array('gid'))
+    ->condition('g.type', $group_type->name);
+
+  // Then select all membership ids matching those groups.
+  $mids = db_select('group_membership', 'gm')
+    ->fields('gm', array('mid'))
+    ->condition('gm.gid', $gids, 'IN')
+    ->execute()->fetchCol();
+
+  // Finally, start a batch running inheritance for all of them.
+  $batch = array(
+    'operations' => array(
+      array('ggroup_group_type_batch', array($mids)),
+    ),
+    'finished' => 'ggroup_group_type_batch_finished',
+    'title' => t('Running inheritance for group type: @type', array('@type'=> $group_type->label())),
+    'init_message' => t('Initializing group inheritance.'),
+    'progress_message' => t('@percentage% done.'),
+    'error_message' => t('The operation encountered an error.'),
+  );
+  batch_set($batch);
+
+  // Start the batch manually if this wasn't called from a form submit.
+  if ($form_submit === FALSE) {
+    batch_process("admin/group/type/manage/$group_type->name/config/subgroup");
+  }
+}
+
+/**
+ * Batch callback for mass running membership inheritance.
+ *
+ * @see ggroup_run_group_type_inheritance()
+ */
+function ggroup_group_type_batch($mids, &$context) {
+  if (!isset($context['sandbox']['progress'])) {
+    $context['sandbox']['progress'] = 0;
+    $context['sandbox']['max'] = count($mids);
+  }
+
+  // Grab the next 25 items from the list.
+  $targets = array_slice($mids, $context['sandbox']['progress'], 25);
+
+  // Run inheritance for the selected items.
+  foreach (group_membership_load_multiple($targets) as $group_membership) {
+    ggroup_run_member_inheritance($group_membership);
+
+    $context['results'][] = $group_membership->mid;
+    $context['sandbox']['progress']++;
+  }
+
+  // Update the status message.
+  $message = 'Processed @current out of @total memberships.';
+  $replace = array(
+    '@current' => $context['sandbox']['progress'],
+    '@total' => $context['sandbox']['max']
+  );
+  $context['message'] = t($message, $replace);
+
+  // Update the progress counter.
+  if ($context['sandbox']['progress'] != $context['sandbox']['max']) {
+    $context['finished'] = $context['sandbox']['progress'] / $context['sandbox']['max'];
+  }
+}
+
+/**
+ * Batch 'finished' callback.
+ *
+ * @see ggroup_run_group_type_inheritance()
+ * @see ggroup_group_type_batch()
+ */
+function ggroup_group_type_batch_finished($success, $results, $operations) {
+  if ($success) {
+    drupal_set_message(format_plural(count($results), 'One membership processed.', '@count memberships processed.'));
+  }
+  else {
+    drupal_set_message(t('Finished with an error.'), 'error');
+  }
+}
+
+/**
+ * Group membership revert inheritance callback.
+ *
+ * @see ggroup_group_member_operations()
+ */
+function ggroup_inheritance_revert($mids) {
+  $count = 0;
+
+  foreach (group_membership_load_multiple($mids) as $group_membership) {
+    if ($group_membership->status == 'inherited-overridden') {
+      $group_membership->status = 'inherited';
+      $group_membership->roles = $group_membership->heritage['initial'];
+      $group_membership->heritage['granted'] = array();
+      $group_membership->heritage['revoked'] = array();
+      $group_membership->save();
+
+      $count++;
+    }
+  }
+
+  $message = format_plural($count, 'Reverted 1 membership.', 'Reverted @count memberships.');
+  drupal_set_message($message);
+}
+
+/**
+ * Group membership break inheritance callback.
+ *
+ * @see ggroup_group_member_operations()
+ */
+function ggroup_inheritance_break($mids) {
+  $count = 0;
+
+  foreach (group_membership_load_multiple($mids) as $group_membership) {
+    if (in_array($group_membership->status, array('inherited', 'inherited-overridden'))) {
+      $group_membership->status = 'active';
+      $group_membership->heritage = NULL;
+      $group_membership->parent_mid = NULL;
+      $group_membership->save();
+
+      $count++;
+    }
+  }
+
+  $message = format_plural($count, 'Broke heritage of 1 membership.', 'Broke heritage of @count memberships.');
+  drupal_set_message($message);
+}

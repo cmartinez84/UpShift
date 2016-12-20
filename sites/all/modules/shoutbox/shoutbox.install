@@ -1,0 +1,200 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the Shoutbox module.
+ */
+
+/**
+ * Define the 'shoutbox' schema.
+ *
+ * @return
+ *   The schema which contains the structure for the shoutbox module's tables.
+ */
+function shoutbox_schema() {
+  $schema['shoutbox'] = array(
+    'description' => 'A table containing the shoutbox posts.',
+    'fields' => array(
+      'shout_id' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'The primary identifier for the shout post.',
+      ),
+      'uid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'The primary identifier for the shout post author.',
+      ),
+      'nick' => array(
+        'type' => 'varchar',
+        'length' => 60,
+        'not null' => TRUE,
+        'description' => 'The author\'s nickname.',
+      ),
+      'shout' => array(
+        'type' => 'text',
+        'size' => 'big',
+        'not null' => TRUE,
+        'description' => 'The shout post.',
+      ),
+      'module' => array(
+        'type' => 'varchar',
+        'length' => 64,
+        'not null' => TRUE,
+        'description' => 'The module that this shout belongs to.',
+      ),
+      'moderate' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'The moderation id.',
+      ),
+      'created' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Creation date.',
+      ),
+      'changed' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Last updated date.',
+      ),
+      'hostname' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'default' => 'localhost',
+        'not null' => TRUE,
+        'description' => 'The hostname where the post originated.',
+      ),
+      'sid' => array(
+        'type' => 'varchar',
+        'length' => 64,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'Session id of the current session.',
+      ),
+    ),
+    'primary key' => array('shout_id'),
+  );
+
+  return $schema;
+}
+
+/**
+ * Uninstall shoutbox.
+ */
+function shoutbox_uninstall() {
+
+  // Delete variables.
+  variable_del('shoutbox_expire');
+  variable_del('shoutbox_ascending');
+  variable_del('shoutbox_refresh');
+  variable_del('shoutbox_anonymous_timeout');
+  variable_del('shoutbox_registered_timeout');
+  variable_del('shoutbox_filter_format');
+  variable_del('shoutbox_max_length');
+  variable_del('shoutbox_showamount_block');
+  variable_del('shoutbox_showamount_page');
+  variable_del('shoutbox_escape_html');
+  variable_del('shoutbox_profile_name');
+  variable_del('shoutbox_restrict_general_shouts');
+  variable_del('shoutbox_time_format');
+  variable_del('shoutbox_widget_type');
+  variable_del('shoutbox_submit_type');
+  variable_del('shoutbox_default_message');
+}
+
+/**
+ * Update hook.
+ * This update prepares the database for
+ * shoutbox 5.2.x
+ * Removes the moderation table
+ * Drops the status column on the shoutbox table
+ * Adds sid column to the shoutbox table
+ */
+function shoutbox_update_5200() {
+  $success_table_drop = db_drop_table('shoutbox_moderation');
+  $success_drop_status = db_drop_field('shoutbox', 'status');
+  $sid_spec = array(
+    'type' => 'varchar',
+    'length' => 64,
+    'not null' => TRUE,
+    'default' => '',
+    'description' => 'Session id of the current session.',
+  );
+  $success_add_sid = db_add_field('shoutbox', 'sid', $sid_spec);
+
+  if (!$success_table_drop) {
+    throw new DrupalUpdateException(t('Database table \'shoutbox_moderation\' was not found. '));
+  }
+  if (!$success_drop_status) {
+    throw new DrupalUpdateException(t('Database \'shoutbox\' did not have a column called \'status\''));
+  }
+}
+
+/**
+ * This update prepares the shoutbox database for
+ * shoutbox 6.2.x.
+ */
+function shoutbox_update_6200() {
+
+  $success_drop_url = db_drop_field('shoutbox', 'url');
+  $nick_spec = array(
+    'type' => 'varchar',
+    'length' => 60,
+    'not null' => TRUE,
+    'description' => 'The author\'s nickname.',
+  );
+  db_change_field('shoutbox', 'nick', 'nick', $nick_spec);
+  if (!$success_drop_url) {
+    throw new DrupalUpdateException(t('Database \'shoutbox\' did not have a column called \'url\''));
+  }
+}
+
+/**
+ * Remove size restrictions on shout messages.
+ */
+function shoutbox_update_6201() {
+  $shout_spec = array(
+    'type' => 'text',
+    'size' => 'big',
+    'not null' => TRUE,
+    'description' => 'The shout post.',
+  );
+  db_change_field('shoutbox', 'shout', 'shout', $shout_spec);
+}
+
+/**
+ * Add module field to the schema.
+ */
+function shoutbox_update_6202() {
+  $module_spec = array(
+    'type' => 'varchar',
+    'length' => 64,
+    'not null' => TRUE,
+    'description' => 'The module that this shout belongs to.',
+    'initial' => 'shoutbox',
+  );
+  db_add_field('shoutbox', 'module', $module_spec);
+}
+
+/**
+ * Add default value to "hostname" column.
+ */
+function shoutbox_update_7000() {
+
+  $field_info = array(
+    'type' => 'varchar',
+    'length' => 255,
+    'default' => 'localhost',
+    'not null' => TRUE,
+    'description' => 'The hostname where the post originated.',
+  );
+
+  db_change_field('shoutbox', 'hostname', 'hostname', $field_info);
+}

@@ -1,0 +1,15 @@
+<?php
+/**
+ * @file
+ * Install, update and uninstall functions for the Group Node project.
+ */
+
+/**
+ * Implements hook_install().
+ */
+function gnode_install() {
+  db_update('system')
+    ->fields(array('weight' => 1))
+    ->condition('name', 'gnode')
+    ->execute();
+}

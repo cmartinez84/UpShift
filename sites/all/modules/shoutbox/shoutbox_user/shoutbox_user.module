@@ -1,0 +1,163 @@
+<?php
+
+/**
+ * Implements hook_menu().
+ */
+function shoutbox_user_menu() {
+  return array(
+    'shoutbox/user/%user' => array(
+      'title' => 'Shoutbox',
+      'page callback' => 'shoutbox_user_page',
+      'page arguments' => array(2),
+      'access callback' => '_shoutbox_user_page_access',
+      'access arguments' => array(),
+      'description' => 'A dedicated shoutbox page for user shouts.',
+      'type' => MENU_CALLBACK,
+    ),
+    'shoutbox/user/%user/js/view' => array(
+      'title' => 'Shout tag',
+      'page callback' => 'shoutbox_user_js_view',
+      'page arguments' => array(2),
+      'access callback' => '_shoutbox_user_page_access',
+      'access arguments' => array(),
+      'description' => 'Javascript callback for viewing a user\'s shouts',
+      'type' => MENU_CALLBACK,
+    ),
+  );
+}
+
+/**
+ * Page callback for user shoutbox page
+ */
+function shoutbox_user_page($user) {
+  // Set the title with the user's name
+  $name = check_plain($user->name);
+  // TODO(disterics): Make this themeable
+  drupal_set_title(t('!name Shoutbox', array('!name' => l($name . '\'s', "user/{$user->uid}"))), PASS_THROUGH);
+
+  // Return normal shoutbox page
+  return shoutbox_view();
+}
+
+/**
+ * Access callback for user shouts
+ */
+function _shoutbox_user_page_access() {
+  if (user_access('access shoutbox') && user_access('access user profiles')) {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+/**
+ * Implements hook_shoutbox().
+ */
+function shoutbox_user_shoutbox($op, &$shout, &$a1 = NULL, $form_state = NULL) {
+  switch ($op) {
+    case 'context':
+      if ($uid = shoutbox_user_get_current_uid()) {
+        $a1['shoutbox_user'] = $uid;
+      }
+      break;
+
+    case 'insert':
+      // Determine if the shout was added for a user
+      if (array_key_exists('uid', $form_state['values']) &&
+          $uid = $form_state['values']['uid']) {
+        shoutbox_user_save($shout, $uid);
+      }
+      break;
+
+    case 'presave':
+      // Determine if the shout was added for a user
+      if (array_key_exists('uid', $form_state['values']) &&
+          $uid = $form_state['values']['uid']) {
+        // Tag this shout as belonging to this module
+        $shout->module = 'shoutbox_user';
+      }
+      break;
+
+    case 'delete':
+      db_delete('shoutbox_user')
+          ->condition('shout_id', $shout->shout_id)
+          ->execute();
+      break;
+
+    case 'js path':
+      // Alter the js update path so only shouts with the given
+      // tag are shown
+      if ($uid = shoutbox_user_get_current_uid()) {
+        $a1 = "shoutbox/user/{$uid}/js/view/";
+      }
+      break;
+
+    case 'form':
+      if ($uid = shoutbox_user_get_current_uid()) {
+        $a1['wrapper']['uid'] = array(
+          '#type' => 'value',
+          '#value' => $uid,
+        );
+      }
+      break;
+
+    case 'link':
+      if ($uid = shoutbox_user_get_current_uid()) {
+        $a1 = "shoutbox/user/$uid";
+      }
+      break;
+  }
+}
+
+/**
+ * Implements hook_query_TAG_alter().
+ */
+function shoutbox_user_query_shouts_alter(QueryAlterableInterface $query) {
+  $uid = $query->getMetaData('shoutbox_user');
+  if ($query->hasTag('shouts') && (NULL != $uid)) {
+    $query->join('shoutbox_user', 'u', 's.shout_id = u.shout_id');
+    $query->condition('u.uid', $uid, '=');
+  }
+}
+
+/**
+ * Determine the user ID of the user we're viewing
+ *
+ * @return
+ *   The user id being viewed, otherwise FALSE is we're not viewing one
+ */
+function shoutbox_user_get_current_uid() {
+  // Detect user/%uid
+  if (arg(0) == 'user' && is_numeric(arg(1))) {
+    return arg(1);
+    // TODO: (disterics) Do we really want this 
+  }
+  else if (arg(0) == 'shoutbox' && arg(1) == 'user' && is_numeric(arg(2))) {
+    return arg(2);
+  }
+  return FALSE;
+}
+
+/**
+ * Save a shout for a given user
+ *
+ * @param $shout
+ *   A shout object
+ * @param $user
+ *   The user, or uid, whom the shout is directed towards
+ */
+function shoutbox_user_save($shout, $user) {
+  $record = new stdClass;
+  $record->shout_id = $shout->shout_id;
+  $record->uid = is_object($user) ? $user->uid : $user;
+  drupal_write_record('shoutbox_user', $record);
+}
+
+/**
+ * Javascript callback for viewing shouts for a given tag
+ */
+function shoutbox_user_js_view($user) {
+  // This callback is only needed to keep the
+  // URL like shoutbox/user/%uid so the query gets altered
+  shoutbox_js_view();
+}

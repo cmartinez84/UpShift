@@ -1,0 +1,675 @@
+<?php
+/**
+ * @file
+ * Install, update and uninstall functions for the Group project.
+ */
+
+/**
+ * Implements hook_install().
+ *
+ * @see group_form()
+ */
+function group_install() {
+  $t = get_t();
+
+  // Enable the editing of Group entities in the admin theme.
+  variable_set('group_admin_theme', '1');
+
+  // Add Pathauto module support.
+  //
+  // Setting a default pattern will trigger the Pathauto UI to show up on group
+  // forms even though we're not sure whether the soft dependency Entity tokens
+  // is enabled.
+  //
+  // Because we still want to indicate the possibility of using Pathauto with
+  // Group instead of not setting a default pattern at all when Entity tokens is
+  // disabled, we alter the Pathauto form in group_form().
+  variable_set('pathauto_group_pattern', 'group/[group:title]');
+
+  // Create a first global admin role and give it full permissions.
+  $group_admin = entity_create('group_role', array(
+    'name' => 'group_admin',
+    'label' => $t('Administrator'),
+    'weight' => 10,
+    'permissions' => array_keys(module_invoke_all('group_permission')),
+  ));
+  $group_admin->save();
+}
+
+/**
+ * Implements hook_uninstall().
+ *
+ * @see hook_group_uninstall()
+ */
+function group_uninstall() {
+  variable_del('group_admin_theme');
+  variable_del('group_pm_group_view_disabled');
+
+  // Bypass entity_load() as we cannot use it here.
+  $types = db_select('group_type', 'gt')
+    ->fields('gt', array('name'))
+    ->execute()
+    ->fetchCol();
+
+  // Delete the attached fields from the group types.
+  foreach ($types as $name) {
+    field_attach_delete_bundle('group', $name);
+  }
+
+  // Run hook_group_uninstall() to allow other modules to clean up.
+  $gids = db_select('groups', 'g')->fields('g', array('gid'))->execute()->fetchCol();
+  module_invoke_all('group_uninstall', $gids);
+}
+
+/**
+ * Implements hook_schema().
+ */
+function group_schema() {
+  // Cannot name table 'group' as this is a keyword in SQL.
+  $schema['groups'] = array(
+    'description' => 'Stores group entities.',
+    'fields' => array(
+      'gid' => array(
+        'description' => 'Primary Key: Unique group item ID.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'type' => array(
+        'description' => 'The {group_type}.name for the group.',
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'title' => array(
+        'description' => 'The title of this group, always treated as non-markup plain text.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+    ),
+    'indexes' => array(
+      'type' => array('type'),
+    ),
+    'foreign keys' => array(
+      'group_type' => array(
+        'table' => 'group_type',
+        'columns' => array('type' => 'name'),
+      ),
+    ),
+    'primary key' => array('gid'),
+  );
+
+  $schema['group_type'] = array(
+    'description' => 'Stores group type entities.',
+    'fields' => array(
+      'tid' => array(
+        'description' => 'Primary Key: Unique group type ID.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'name' => array(
+        'description' => 'The machine-readable name of this group type.',
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+      ),
+      'label' => array(
+        'description' => 'The human-readable name of this group type.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'anonymous_permissions' => array(
+        'description' => 'The anonymous permissions for this group type.',
+        'type' => 'text',
+        'not null' => TRUE,
+        'serialize' => TRUE,
+      ),
+      'outsider_permissions' => array(
+        'description' => 'The outsider permissions for this group type.',
+        'type' => 'text',
+        'not null' => TRUE,
+        'serialize' => TRUE,
+      ),
+      'member_permissions' => array(
+        'description' => 'The member permissions for this group type.',
+        'type' => 'text',
+        'not null' => TRUE,
+        'serialize' => TRUE,
+      ),
+      'config' => array(
+        'description' => 'The specific configuration for this group type.',
+        'type' => 'text',
+        'not null' => TRUE,
+        'serialize' => TRUE,
+      ),
+      'weight' => array(
+        'description' => 'The weight of this group type in relation to others.',
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'status' => array(
+        'description' => 'The exportable status of the entity.',
+        'type' => 'int',
+        'size' => 'tiny',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        // ENTITY_CUSTOM
+        'default' => 0x01,
+      ),
+      'module' => array(
+        'description' => 'The name of the providing module if the entity has been defined in code.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+    ),
+    'unique keys' => array(
+      'name' => array('name'),
+    ),
+    'primary key' => array('tid'),
+  );
+
+  $schema['group_role'] = array(
+    'description' => 'Stores group role entities.',
+    'fields' => array(
+      'rid' => array(
+        'description' => 'Primary Key: Unique group role ID.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'type' => array(
+        'description' => 'The {group_type}.name for the group role.',
+        'type' => 'varchar',
+        'length' => 32,
+        'default' => '',
+      ),
+      'name' => array(
+        'description' => 'The machine-readable name of this group role.',
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+      ),
+      'label' => array(
+        'description' => 'The human-readable name of this group role.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'global' => array(
+        'description' => 'Whether the group role is global or specific for a group type.',
+        'type' => 'int',
+        'size' => 'tiny',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 1,
+      ),
+      'permissions' => array(
+        'description' => 'The group permissions for the role.',
+        'type' => 'text',
+        'not null' => TRUE,
+        'serialize' => TRUE,
+      ),
+      'weight' => array(
+        'description' => 'The weight of this group role in relation to others.',
+        'type' => 'int',
+        'size' => 'tiny',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'status' => array(
+        'description' => 'The exportable status of the entity.',
+        'type' => 'int',
+        'size' => 'tiny',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        // ENTITY_CUSTOM
+        'default' => 0x01,
+      ),
+      'module' => array(
+        'description' => 'The name of the providing module if the entity has been defined in code.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+    ),
+    'indexes' => array(
+      'type' => array('type'),
+    ),
+    'unique keys' => array(
+      'name' => array('name'),
+    ),
+    'foreign keys' => array(
+      'group_type' => array(
+        'table' => 'group_type',
+        'columns' => array('type' => 'name'),
+      ),
+    ),
+    'primary key' => array('rid'),
+  );
+
+  $schema['group_membership'] = array(
+    'description' => 'Stores group membership entities.',
+    'fields' => array(
+      'mid' => array(
+        'description' => 'Primary Key: Unique group membership ID.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'gid' => array(
+        'description' => 'The {groups}.gid for the membership.',
+        'type' => 'int',
+        'default' => 0,
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'uid' => array(
+        'description' => 'The {users}.uid for the membership.',
+        'type' => 'int',
+        'default' => 0,
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'status' => array(
+        'description' => 'The membership status.',
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => 'active',
+      ),
+      'blocked_status' => array(
+        'description' => 'The membership status before the member was blocked.',
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'blocked_on' => array(
+        'description' => 'The Unix timestamp when the membership was blocked.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+      ),
+      'blocked_by' => array(
+        'description' => 'The {users}.uid of the blocking user.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+      ),
+      'joined_on' => array(
+        'description' => 'The Unix timestamp when the user joined.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+      ),
+      'requested_on' => array(
+        'description' => 'The Unix timestamp when the user requested to join.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+      ),
+      'approved_on' => array(
+        'description' => 'The Unix timestamp when the membership was approved.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+      ),
+      'approved_by' => array(
+        'description' => 'The {users}.uid of the approving user.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+      ),
+    ),
+    'indexes' => array(
+      'gid' => array('gid'),
+      'uid' => array('uid'),
+      'status' => array('status'),
+    ),
+    'unique keys' => array(
+      'membership' => array('gid', 'uid'),
+    ),
+    'foreign keys' => array(
+      'group' => array(
+        'table' => 'groups',
+        'columns' => array('gid' => 'gid'),
+      ),
+      'group_user' => array(
+        'table' => 'users',
+        'columns' => array('uid' => 'uid'),
+      ),
+      'blocking_user' => array(
+        'table' => 'users',
+        'columns' => array('blocked_by' => 'uid'),
+      ),
+      'approving_user' => array(
+        'table' => 'users',
+        'columns' => array('approved_by' => 'uid'),
+      ),
+    ),
+    'primary key' => array('mid'),
+  );
+
+  $schema['group_entity'] = array(
+    'description' => 'Stores information about the link between groups and entities.',
+    'fields' => array(
+      'gid' => array(
+        'description' => 'The {groups}.gid for the group the entity is linked to.',
+        'type' => 'int',
+        'default' => 0,
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'entity_id' => array(
+        'description' => 'The id of the entity to link to the group.',
+        'type' => 'int',
+        'default' => 0,
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'entity_type' => array(
+        'description' => 'The type of the entity to link to the group.',
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'bundle' => array(
+        'description' => 'The bundle of the entity to link to the group.',
+        'type' => 'varchar',
+        'length' => 128,
+        'default' => '',
+      ),
+    ),
+    'indexes' => array(
+      'entity' => array('entity_type', 'entity_id'),
+    ),
+    'foreign keys' => array(
+      'group' => array(
+        'table' => 'groups',
+        'columns' => array('gid' => 'gid'),
+      ),
+    ),
+    'primary key' => array('gid', 'entity_type', 'entity_id'),
+  );
+
+  $schema['group_membership_role'] = array(
+    'description' => 'Links group memberships to their roles.',
+    'fields' => array(
+      'mid' => array(
+        'description' => 'The {group_membership}.mid for the membership.',
+        'type' => 'int',
+        'default' => 0,
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'role' => array(
+        'description' => 'The {group_role}.name for the group role.',
+        'type' => 'varchar',
+        'length' => 32,
+        'default' => '',
+        'not null' => TRUE,
+      ),
+    ),
+    'indexes' => array(
+      'group_membership' => array('mid'),
+    ),
+    'foreign keys' => array(
+      'group_membership' => array(
+        'table' => 'group_membership',
+        'columns' => array('mid' => 'mid'),
+      ),
+      'group_role' => array(
+        'table' => 'group_role',
+        'columns' => array('role' => 'name'),
+      ),
+    ),
+    'primary key' => array('mid', 'role'),
+  );
+
+  return $schema;
+}
+
+/**
+ * Add the subscription_type column to {group_type}.
+ */
+function group_update_7001() {
+  db_add_field('group_type', 'subscription_type', array(
+    'description' => 'The way users can become members of groups of this group type.',
+    'type' => 'varchar',
+    'length' => 32,
+    'not null' => TRUE,
+  ));
+}
+
+/**
+ * Add the status column to {group_membership}.
+ */
+function group_update_7002() {
+  db_add_field('group_membership', 'status', array(
+    'description' => 'The membership status.',
+    'type' => 'int',
+    'size' => 'tiny',
+    'unsigned' => TRUE,
+    'not null' => TRUE,
+     // GROUP_MEMBERSHIP_ACTIVE
+    'default' => 1,
+  ));
+}
+
+/**
+ * Convert the status column for {group_membership} to a token (varchar).
+ */
+function group_update_7003() {
+  $spec = array(
+    'description' => 'The membership status.',
+    'type' => 'varchar',
+    'length' => 32,
+    'not null' => TRUE,
+    'default' => 'active',
+  );
+
+  $keys_new = array(
+    'indexes' => array(
+      'status' => array('status'),
+    ),
+  );
+
+  db_drop_index('group_membership', 'status');
+  db_change_field('group_membership', 'status', 'status', $spec, $keys_new);
+
+  // Convert the old values into new ones.
+  $updates['blocked'] = db_update('group_membership')->condition('status', '0');
+  $updates['active']  = db_update('group_membership')->condition('status', '1');
+  $updates['invited'] = db_update('group_membership')->condition('status', '2');
+
+  foreach ($updates as $status => $query) {
+    $query->fields(array(
+      'status' => $status,
+    ));
+
+    $query->execute();
+  }
+}
+
+/**
+ * Change the way roles are saved on memberships.
+ */
+function group_update_7004() {
+  // Create the {group_membership_role} table.
+  $table = array(
+    'description' => 'Links group memberships to their roles.',
+    'fields' => array(
+      'mid' => array(
+        'description' => 'The {group_membership}.mid for the membership.',
+        'type' => 'int',
+        'default' => 0,
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'role' => array(
+        'description' => 'The {group_role}.name for the group role.',
+        'type' => 'varchar',
+        'length' => 32,
+        'default' => '',
+        'not null' => TRUE,
+      ),
+    ),
+    'indexes' => array(
+      'group_membership' => array('mid'),
+    ),
+    'foreign keys' => array(
+      'group_membership' => array(
+        'table' => 'group_membership',
+        'columns' => array('mid' => 'mid'),
+      ),
+      'group_role' => array(
+        'table' => 'group_role',
+        'columns' => array('role' => 'name'),
+      ),
+    ),
+    'primary key' => array('mid', 'role'),
+  );
+  db_create_table('group_membership_role', $table);
+
+  // Prepare the insert for the new table.
+  $query = db_insert('group_membership_role')->fields(array('mid', 'role'));
+
+  // Gather the existing membership data for insert.
+  foreach (db_select('group_membership', 'gm')->fields('gm')->execute() as $record) {
+    foreach (unserialize($record->roles) as $role) {
+      $query->values(array(
+        'mid' => $record->mid,
+        'role' => $role,
+      ));
+    }
+  }
+
+  // Migrate the existing data.
+  $query->execute();
+
+  // Drop the old data from {group_membership}.
+  db_drop_field('group_membership', 'roles');
+}
+
+/**
+ * Change the group_admin role to be deletable.
+ */
+function group_update_7005() {
+  if ($group_admin = group_role_load('group_admin')) {
+    $group_admin->status = ENTITY_CUSTOM;
+    $group_admin->save();
+  }
+}
+
+/**
+ * Drop the subscription_type column from {group_type}.
+ */
+function group_update_7006() {
+  db_drop_field('group_type', 'subscription_type');
+}
+
+/**
+ * Add group type configuration to {group_type}.
+ */
+function group_update_7007() {
+  db_add_field('group_type', 'config', array(
+    'description' => 'The specific configuration for this group type.',
+    'type' => 'text',
+    'not null' => TRUE,
+    'serialize' => TRUE,
+    'initial' => serialize(array()),
+  ));
+}
+
+/**
+ * Drop the group_default_roles variable.
+ */
+function group_update_7008() {
+  $old_config = variable_get('group_default_roles');
+
+  // The content of group_default_roles has moved to the group types.
+  foreach (group_types() as $type => $group_type) {
+    if (!empty($old_config[$type])) {
+      $group_type->config['creator_roles'] = $old_config[$type];
+      $group_type->save();
+    }
+  }
+
+  variable_del('group_default_roles');
+}
+
+/**
+ * Add a lot of metadata to group memberships.
+ */
+function group_update_7009() {
+  $blocked_status = array(
+    'description' => 'The membership status before the member was blocked.',
+    'type' => 'varchar',
+    'length' => 32,
+    'not null' => TRUE,
+    'default' => '',
+  );
+
+  // Add 'blocked_status'.
+  db_add_field('group_membership', 'blocked_status', $blocked_status);
+
+  $base = array(
+    'type' => 'int',
+    'unsigned' => TRUE,
+  );
+
+  // Add 'blocked_on'.
+  $field = array('description' => 'The Unix timestamp when the membership was blocked.') + $base;
+  db_add_field('group_membership', 'blocked_on', $field);
+
+  // Add 'blocked_by'.
+  $field = array('description' => 'The {users}.uid of the blocking user.') + $base;
+  db_add_field('group_membership', 'blocked_by', $field);
+
+  // Add 'joined_on'.
+  $field = array('description' => 'The Unix timestamp when the user joined.') + $base;
+  db_add_field('group_membership', 'joined_on', $field);
+
+  // Add 'requested_on'.
+  $field = array('description' => 'The Unix timestamp when the user requested to join.') + $base;
+  db_add_field('group_membership', 'requested_on', $field);
+
+  // Add 'approved_on'.
+  $field = array('description' => 'The Unix timestamp when the membership was approved.') + $base;
+  db_add_field('group_membership', 'approved_on', $field);
+
+  // Add 'approved_by'.
+  $field = array('description' => 'The {users}.uid of the approving user.') + $base;
+  db_add_field('group_membership', 'approved_by', $field);
+}
+
+/**
+ * Add anonymous permissions to {group_type}.
+ */
+function group_update_7010() {
+  db_add_field('group_type', 'anonymous_permissions', array(
+    'description' => 'The anonymous permissions for this group type.',
+    'type' => 'text',
+    'not null' => TRUE,
+    'serialize' => TRUE,
+    'initial' => serialize(array()),
+  ));
+}
+
+/**
+ * Make sure the creator_roles data in {group_type}.config is consistent.
+ */
+function group_update_7011() {
+  // Turn all creator_roles data into a numerical array.
+  foreach (group_types() as $group_type) {
+    if (!empty($group_type->config['creator_roles'])) {
+      $group_type->config['creator_roles'] = array_values(array_filter($group_type->config['creator_roles']));
+      $group_type->save();
+    }
+  }
+}

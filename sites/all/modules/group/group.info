@@ -1,0 +1,40 @@
+name = Group
+description = Allows you to group users and content
+core = 7.x
+package = Group
+configure = admin/group/config/group
+
+dependencies[] = entity
+
+files[] = classes/group.inc
+files[] = classes/group.controller.inc
+files[] = classes/group.ui_controller.inc
+files[] = classes/group.extra_fields_controller.inc
+files[] = classes/group.views_controller.inc
+files[] = classes/group_membership.inc
+files[] = classes/group_membership.controller.inc
+files[] = classes/group_membership.ui_controller.inc
+files[] = classes/group_membership.extra_fields_controller.inc
+files[] = classes/group_membership.views_controller.inc
+files[] = classes/group_role.inc
+files[] = classes/group_role.controller.inc
+files[] = classes/group_role.ui_controller.inc
+files[] = classes/group_role.features_controller.inc
+files[] = classes/group_type.inc
+files[] = classes/group_type.controller.inc
+files[] = classes/group_type.ui_controller.inc
+files[] = classes/group_type.features_controller.inc
+
+files[] = views/handlers/group_handler_field_child_entity_count.inc
+files[] = views/handlers/group_handler_field_membership_role.inc
+files[] = views/handlers/group_handler_filter_membership_role.inc
+files[] = views/handlers/group_handler_relationship_child_entity.inc
+files[] = views/handlers/group_handler_relationship_membership_role.inc
+files[] = views/handlers/group_handler_relationship_parent_group.inc
+
+; Information added by Drupal.org packaging script on 2015-08-27
+version = "7.x-1.0-beta6"
+core = "7.x"
+project = "group"
+datestamp = "1440690547"
+

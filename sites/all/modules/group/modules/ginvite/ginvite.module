@@ -1,0 +1,212 @@
+<?php
+/**
+ * @file
+ * Contains invite functionality for the Group module.
+ */
+
+/**
+ * Load our router functions without polluting the .module file.
+ */
+require_once 'ginvite.router.inc';
+
+/**
+ * Implements hook_schema_alter().
+ *
+ * Informs Drupal of the changes we made to {group_membership}.
+ */
+function ginvite_schema_alter(&$schema) {
+  // Include the install file for its helper functions.
+  module_load_install('ginvite');
+
+  // Add the invited_on and invited_by fields.
+  $schema['group_membership']['fields']['invited_on'] = _ginvite_invited_on();
+  $schema['group_membership']['fields']['invited_by'] = _ginvite_invited_by();
+
+  // Add the invited_by foreign key.
+  $schema['group_membership']['foreign keys']['inviter'] = array(
+    'table' => 'users',
+    'columns' => array('invited_by' => 'uid'),
+  );
+}
+
+/**
+ * Implements hook_entity_property_info_alter().
+ *
+ * Informs Drupal of the changes we made to {group_membership}.
+ */
+function ginvite_entity_property_info_alter(&$info) {
+  $properties = &$info['group_membership']['properties'];
+  $properties['invited_on'] = array(
+    'label' => t('Invited on'),
+    'description' => t('The date when the member was invited.'),
+    'type' => 'date',
+    'getter callback' => 'entity_property_verbatim_date_get',
+    'setter callback' => 'entity_property_verbatim_set',
+    'schema field' => 'invited_on',
+  );
+
+  $properties['invited_by'] = array(
+    'label' => t('Invited by'),
+    'description' => t('The user who invited the member.'),
+    'type' => 'user',
+    'setter callback' => 'entity_property_verbatim_set',
+    'schema field' => 'invited_by',
+  );
+}
+
+/**
+ * Implements hook_forms().
+ */
+function ginvite_forms($form_id, $args) {
+  $forms['ginvite_by_user_form'] = array(
+    'callback' => 'ginvite_form',
+  );
+
+  $forms['ginvite_by_mail_form'] = array(
+    'callback' => 'ginvite_form',
+  );
+
+  return $forms;
+}
+
+/**
+ * Implements hook_init().
+ *
+ * Check for invites on every non-anonymous page load.
+ */
+function ginvite_init() {
+  global $user;
+
+  if ($user->uid) {
+    if (GroupMembership::getByStatus($user->uid, 'invited')) {
+      $message = 'You have pending group invitations. <a href="@url">Visit your profile</a> to see them.';
+      $replace = array('@url' => url("user/$user->uid/group/invite"));
+      drupal_set_message(t($message, $replace), 'warning', FALSE);
+    }
+  }
+}
+
+/**
+ * Implements hook_user_insert().
+ *
+ * Converts e-mail invites into fully qualified invites.
+ */
+function ginvite_user_insert(&$edit, $account, $category) {
+  // Convert all invites for the registered e-mail address.
+  foreach (ginvite_get_invites($account->mail) as $invite) {
+    $values = array(
+      'gid' => $invite->gid,
+      'uid' => $account->uid,
+      'roles' => unserialize($invite->roles),
+      'status' => 'invited',
+      'invited_on' => $invite->invited_on,
+      'invited_by' => $invite->invited_by,
+    );
+
+    // Create and save the membership.
+    $group_membership = entity_create('group_membership', $values);
+    $group_membership->save();
+  }
+
+  // Delete the invites from {group_invite}.
+  db_delete('group_invite')
+    ->condition('mail', $account->mail)
+    ->execute();
+}
+
+/**
+ * Get group invitations for a given e-mail address.
+ *
+ * @param string $mail
+ *   The e-mail address to retrieve invites for.
+ *
+ * @return array
+ *   An array of database records keyed by the group id.
+ */
+function ginvite_get_invites($mail) {
+  return db_select('group_invite', 'gi')
+    ->fields('gi')
+    ->condition('mail', $mail)
+    ->execute()
+    ->fetchAllAssoc('gid');
+}
+
+/**
+ * Get group invitations for a given group.
+ *
+ * @param Group $group
+ *   The group to retrieve invites for.
+ *
+ * @return array
+ *   An array of database records keyed by the invite id.
+ */
+function ginvite_get_group_invites(Group $group) {
+  return db_select('group_invite', 'gi')
+    ->fields('gi')
+    ->condition('gid', $group->gid)
+    ->execute()
+    ->fetchAllAssoc('iid');
+}
+
+/**
+ * Implements hook_entity_delete().
+ *
+ * Removes any unused invites for deleted groups.
+ */
+function ginvite_entity_delete($entity, $type) {
+  if ($type == 'group') {
+    db_delete('group_invite')
+      ->condition('gid', $entity->gid)
+      ->execute();
+  }
+}
+
+/**
+ * Implements hook_mail().
+ *
+ * This mail is sent when people who do not have an account on the website yet
+ * are invited into a group. It is sent in the language the inviter was using
+ * the website in.
+ *
+ * @todo Make this e-mail customizable: variable or stringoverrides module?
+ *
+ * @see ginvite_by_mail_form_submit()
+ */
+function ginvite_mail($key, &$message, $params) {
+  if ($key == 'invite') {
+    $options = array(
+      'langcode' => $message['language']->language,
+    );
+
+    $body_message  = 'Hi there!' . "\n\n";
+    $body_message .= '@user has invited you to become a member of the group "@group" on @site.' . "\n";
+    $body_message .= 'If you wish to accept the invitation, you need to create an account first.' . "\n\n";
+    $body_message .= 'Please visit the following address in order to do so: @url.' . "\n";
+    $body_message .= 'Make sure you register your account with this e-mail address!' . "\n\n";
+    $body_message .= 'Kind regards,' . "\n";
+    $body_message .= 'The @site team';
+    $body_replace = array(
+      '@user' => format_username($params['user']),
+      '@group' => $params['group']->title,
+      '@site' => variable_get('site_name', 'Drupal'),
+      '@url' => url('user/register', array('absolute' => TRUE)),
+    );
+
+    $message['subject'] = t('You have a pending group invitation', array(), $options);
+    $message['body'][] = t($body_message, $body_replace, $options);
+  }
+}
+
+/**
+ * Implements hook_admin_paths().
+ */
+function ginvite_admin_paths() {
+  if (variable_get('group_admin_theme')) {
+    $paths = array(
+      'group/*/invite' => TRUE,
+      'group/*/invite/*' => TRUE,
+    );
+
+    return $paths;
+  }
+}

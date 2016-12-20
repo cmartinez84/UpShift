@@ -1,0 +1,160 @@
+<?php
+/**
+ * @file
+ * Install, update and uninstall functions for the Subgroup project.
+ */
+
+/**
+ * Schema API definition for the parent_mid column.
+ *
+ * Helper function for reuse of this database column.
+ */
+function _ggroup_parent_mid() {
+  return array(
+    'description' => 'The id of the membership this membership was inherited from.',
+    'type' => 'int',
+    'unsigned' => TRUE,
+  );
+}
+
+/**
+ * Schema API definition for the heritage column.
+ *
+ * Helper function for reuse of this database column.
+ */
+function _ggroup_heritage() {
+  return array(
+    'description' => 'Metadata about the state of an inherited membership.',
+    'type' => 'text',
+    'serialize' => TRUE,
+  );
+}
+
+/**
+ * Implements hook_install().
+ */
+function ggroup_install() {
+  db_update('system')
+    ->fields(array('weight' => 1))
+    ->condition('name', 'ggroup')
+    ->execute();
+
+  db_add_field('group_membership', 'parent_mid', _ggroup_parent_mid());
+  db_add_field('group_membership', 'heritage', _ggroup_heritage());
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function ggroup_uninstall() {
+  db_drop_field('group_membership', 'parent_mid');
+}
+
+/**
+ * Implements hook_update_dependencies().
+ */
+function ggroup_update_dependencies() {
+  // The {group_type} schema needs to be adjusted first.
+  $dependencies['ggroup'][7001] = array(
+    'group' => 7007,
+  );
+
+  return $dependencies;
+}
+
+/**
+ * Drop the ggroup_enabled_subgroups variable.
+ */
+function ggroup_update_7001() {
+  // Reshape the old configuration to fit the new style.
+  foreach (variable_get('ggroup_enabled_subgroups') as $type => $enabled) {
+    if (!empty($enabled)) {
+      // By setting data, we flag the subgroup type as enabled.
+      $old_config[$type] = array();
+    }
+  }
+
+  // The content of ggroup_enabled_subgroups has moved to the group types.
+  foreach (group_types() as $group_type) {
+    $group_type->config['subgroup'] = $old_config;
+    $group_type->save();
+  }
+
+  variable_del('ggroup_enabled_subgroups');
+}
+
+/**
+ * Add the parent_mid column to {group_membership}.
+ */
+function ggroup_update_7002() {
+  db_add_field('group_membership', 'parent_mid', _ggroup_parent_mid());
+}
+
+/**
+ * Remove default value from 'parent_mid'.
+ */
+function ggroup_update_7003() {
+  db_change_field('group_membership', 'parent_mid', 'parent_mid', _ggroup_parent_mid());
+}
+
+/**
+ * Add the heritage column to {group_membership}.
+ */
+function ggroup_update_7004() {
+  db_add_field('group_membership', 'heritage', _ggroup_heritage());
+
+  // Load all 'inherited' memberships and set 'initial'.
+  foreach (group_memberships(array('status' => 'inherited')) as $group_membership) {
+    $group_membership->heritage = array(
+      'initial' => $group_membership->roles,
+      'granted' => array(),
+      'revoked' => array(),
+    );
+    $group_membership->save();
+  }
+
+  // Load all 'inherited-overridden' memberships and get funky.
+  foreach (group_memberships(array('status' => 'inherited-overridden')) as $group_membership) {
+    // Create an EMW to reduce the code below.
+    $emw = entity_metadata_wrapper('group_membership', $group_membership);
+
+    // Retrieve the membership's group type machine name.
+    $type = $emw->group->group_type->raw();
+
+    // Retrieve the parent membership.
+    $parent = $emw->parent_membership->value();
+
+    // Retrieve the parent membership's group type configuration array.
+    $config = $emw->parent_membership->group->group_type->value()->config;
+
+    // If no configuration was found, something is wrong. Don't touch it.
+    if (empty($config['subgroup'][$type])) {
+      continue;
+    }
+
+    // Stores the roles the membership should have gotten.
+    $inherited = array();
+
+    // Check if the membership triggers any inherited roles.
+    foreach ($config['subgroup'][$type] as $role => $inherits) {
+      // If the member had the required role, grant the inherited roles.
+      if ($role == 'member' || in_array($role, $parent->roles)) {
+        $inherited += array_filter($inherits);
+      }
+    }
+
+    // We don't need to set 'member' explicitly, so remove it.
+    unset($inherited['member']);
+
+    // Create a proper roles array.
+    $inherited = array_keys($inherited);
+
+    // Set the 'heritage' data correctly.
+    $group_membership->heritage = array(
+      'initial' => $inherited,
+      'granted' => array_diff($group_membership->roles, $inherited),
+      'revoked' => array_diff($inherited, $group_membership->roles),
+    );
+    $group_membership->save();
+  }
+}

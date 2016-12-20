@@ -1,0 +1,212 @@
+<?php
+
+/**
+ * Implements hook_permission().
+ */
+function shoutbox_domain_permission() {
+  return array(
+    'administer shoutbox assigned domains' => array(
+      'title' => t('Administer assigned domains shoutbox'),
+      'description' => t('Administer shouts and shout settings for assigned domains.'),
+    ),
+    'moderate shoutbox assigned domains' => array(
+      'title' => t('Moderate shouts for assigned domains.'),
+      'description' => t('Enable/Disable posts from other users for assigned domains.'),
+    ),
+    'access shoutbox assigned domains' => array(
+      'title' => t('View assigned domains shoutbox'),
+    ),
+    'post shouts assigned domains' => array(
+      'title' => t('Post assigned domains shouts'),
+    ),
+    'post shouts without approval assigned domains' => array(
+      'title' => t('Skip assigned domains shout approval'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_shoutbox().
+ */
+function shoutbox_domain_shoutbox($op, &$shout, &$a1 = NULL, $form_state = NULL) {
+  if (module_exists('domain')) {
+    $_domain = domain_get_domain();
+    switch ($op) {
+      case 'insert':
+        if (isset($_domain['domain_id'])) {
+          $record = new stdClass;
+          $record->shout_id = $shout->shout_id;
+          $record->domain_id = $_domain['domain_id'];
+          drupal_write_record('shoutbox_domain', $record);
+        }
+        break;
+
+      case 'delete':
+        db_delete('shoutbox_domain')
+            ->condition('shout_id', $shout->shout_id)
+            ->execute();
+        break;
+    }
+  }
+}
+
+/**
+ * Implements hook_query_TAG_alter().
+ */
+function shoutbox_domain_query_shouts_alter(QueryAlterableInterface $query) {
+  if (module_exists('domain')) {
+    $_domain = domain_get_domain();
+    if ($query->hasTag('shouts') && isset($_domain['domain_id'])) {
+      $query->join('shoutbox_domain', 'd', 's.shout_id = d.shout_id');
+      $domain_id = (int) $_domain['domain_id'];
+      $query->condition('d.domain_id', $domain_id, '=');
+    }
+  }
+}
+
+/**
+ * Implements hook_block_view_alter().
+ */
+function shoutbox_domain_block_view_alter(&$data, $block) {
+  // Alter the shoutbox block when it is not on the shoutbox page.
+  if ($block->module == 'shoutbox' && $block->delta == 'shoutbox' && arg(0) != 'shoutbox') {
+    // The shoutbox block is surrounded only by user_access, so we need to override this
+    // if the user has the correct permissions.
+    if (shoutbox_domain_is_assigned_domain() && user_access('access shoutbox assigned domains')) {
+      // Load block data.
+      $block->subject = t('Shoutbox');
+      $block->content = shoutbox_view(TRUE);
+    }
+  }
+}
+
+/**
+ * Implements hook_menu_alter().
+ */
+function shoutbox_domain_menu_alter(&$items) {
+  // Override with a wrapper function to check user_access for the default
+  // permissions, but also the new domain specific permissions.
+  $items['shoutbox']['access callback'] = 'shoutbox_domain_user_access';
+  $items['shoutbox/js/view']['access callback'] = 'shoutbox_domain_user_access';
+  $items['admin/config/user-interface/shoutbox']['access callback'] = 'shoutbox_domain_user_access';
+  //TODO TODO
+}
+
+/**
+ * Menu access callback.
+ */
+function shoutbox_domain_user_access($string, $account = NULL) {
+  if (!$account) {
+    global $user;
+    $account = $user;
+  }
+  return user_access($string, $account) || user_access($string . ' assigned domains', $account);
+}
+
+/**
+ * Implements hook_shoutbox_user_access_alter().
+ */
+function shoutbox_domain_shoutbox_user_access_alter(&$access_granted, $permission, $shout = NULL) {
+
+  $domain_access_granted = user_access($permission . ' assigned domains');
+
+  // If this is an administrator, we grant all permissions requested.
+  if (user_access('administer shoutbox assigned domains') && shoutbox_domain_is_assigned_domain()) {
+    $access_granted = TRUE;
+  }
+
+  if ($domain_access_granted && shoutbox_domain_is_assigned_domain() && !$access_granted) {
+    $access_granted = TRUE;
+  }
+}
+
+/**
+ * Check if the current domain is assigned to the current user.
+ *
+ * Statically cached because this only applies to the current domain
+ * and the current user.
+ *
+ * @return
+ *   Boolean - is assigned or not assigned.
+ */
+function shoutbox_domain_is_assigned_domain() {
+  $is_assigned = &drupal_static(__FUNCTION__);
+
+  if (isset($is_assigned)) {
+    return $is_assigned;
+  }
+
+  global $user;
+
+  $_domain = domain_get_domain();
+
+  // Ensure user domains have been loaded fully in the user object.
+  domain_user_set($user);
+  $is_assigned = !empty($user->domain_user[$_domain['domain_id']]);
+  return $is_assigned;
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function shoutbox_domain_form_shoutbox_admin_settings_alter(&$form, &$form_state) {
+  $form['#domain'] = $_domain = domain_get_domain();
+  $form['#default'] = $_default = domain_default();
+
+  if (!$_domain['is_default']) {
+    drupal_set_message(t('Any changes made to this form will be specific to !domain, 
+      go to !default to make changes globally', array(
+        '!domain' => $_domain['subdomain'],
+        '!default' => l('here', $_default['path'] . 'admin/config/user-interface/shoutbox/manage'),
+    ))); 
+  }
+
+  // Override the submit hook to save domain settings if this is
+  // not the main domain.
+  if (!$_domain['is_default']) {
+    $form['#submit'][] = 'shoutbox_domain_settings_form_submit';
+
+    // Add functionality to revert back to main domain settings.
+    $form['actions']['reset'] = array(
+      '#type' => 'submit',
+      '#value' => 'Reset to default domain settings',
+    );
+
+    foreach ($form['#submit'] as $key => $value) {
+      if ($value == 'system_settings_form_submit') {
+        unset($form['#submit'][$key]);
+      }
+    }
+  }
+
+}
+
+/**
+ * Custom submit handler for shoutbox_admin_settings.
+ */
+function shoutbox_domain_settings_form_submit(&$form, &$form_state) {
+  $op = $form_state['values']['op'];
+  $_domain = $form['#domain'];
+  $_default = $form['#default'];
+
+  switch ($op) {
+    case 'Reset to default domain settings':
+      foreach ($form_state['values'] as $key => $value) {
+        if (strpos($key, 'shoutbox_') !== FALSE) {
+          domain_conf_variable_save(
+            $_domain['domain_id'], 
+            $key, 
+            domain_conf_variable_get($_default['domain_id'], $key)
+          );
+        }
+      }
+    break;
+    case 'Save configuration':
+      foreach ($form_state['values'] as $key => $value) {
+        if (strpos($key, 'shoutbox_') !== FALSE) {
+          domain_conf_variable_save($_domain['domain_id'], $key, $value);
+        }
+      }
+    break;
+  }
+}

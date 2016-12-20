@@ -1,0 +1,103 @@
+<?php
+/**
+ * @file
+ * Main module code for the Group member profiles project.
+ */
+
+/**
+ * Load our helper functions without polluting the .module file.
+ */
+require_once 'helpers/gprofile.entity.inc';
+require_once 'helpers/gprofile_type.entity.inc';
+
+/**
+ * Load our entity functions without polluting the .module file.
+ */
+require_once 'gprofile.entity.inc';
+
+/**
+ * Check whether a group member profile type machine name exists.
+ */
+function gprofile_type_exists($name) {
+  return $name == 'group_membership' || !!gprofile_type_load($name);
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function gprofile_form_group_membership_form_alter(&$form, &$form_state) {
+  $group_membership = $form_state['group_membership'];
+
+  foreach (gprofile_types() as $name => $gprofile_type) {
+    // We use GroupMembership::hasPermission because we could be dealing with
+    // an unsaved group membership here (join or request forms).
+    if ($group_membership->hasPermission("use $name profile")) {
+      $field_name = "gprofile_$name";
+
+      $form[$field_name] = array(
+        '#title' => $gprofile_type->label(),
+        '#type' => 'fieldset',
+        '#collapsible' => TRUE,
+        '#collapsed' => FALSE,
+        // Required for field_attach_form().
+        // We can't set just #parents because form_builder checks for #tree
+        // as well, otherwise not properly setting #parents further down the
+        // line.
+        '#tree' => TRUE,
+        '#parents' => array($field_name),
+      );
+
+      // Try to load the existing GProfile for this member.
+      $gprofile = gprofile_load($group_membership->gid, $group_membership->uid, $name);
+
+      // If unavailable, create a blank one instead.
+      if (empty($gprofile)) {
+        $values = array(
+          'mid' => !empty($group_membership->mid) ? $group_membership->mid : -1,
+          'type' => $name,
+        );
+
+        $gprofile = entity_create('gprofile', $values);
+      }
+
+      // Load fields based on profile type.
+      field_attach_form('gprofile', $gprofile, $form[$field_name], $form_state, entity_language('gprofile', $gprofile));
+
+      // Add the profile to the form state.
+      $form_state['gprofiles'][$field_name] = $gprofile;
+    }
+  }
+
+  // If we added form elements, we need to handle their submissions too.
+  if (!empty($form_state['gprofiles'])) {
+    $form['#validate'][] = 'gprofile_group_membership_validate';
+    $form['#submit'][] = 'gprofile_group_membership_submit';
+  }
+}
+
+/**
+ * Validate handler for editing profiles onto a membership.
+ */
+function gprofile_group_membership_validate(&$form, &$form_state) {
+  foreach ($form_state['gprofiles'] as $field_name => $gprofile) {
+    field_attach_form_validate('gprofile', $gprofile, $form[$field_name], $form_state);
+  }
+}
+
+/**
+ * Submit handler for editing profiles onto a membership.
+ */
+function gprofile_group_membership_submit(&$form, &$form_state) {
+  $group_membership = $form_state['group_membership'];
+
+  foreach ($form_state['gprofiles'] as $field_name => $gprofile) {
+    field_attach_submit('gprofile', $gprofile, $form[$field_name], $form_state);
+
+    // We should have a membership id by now.
+    if ($gprofile->mid == -1) {
+      $gprofile->mid = $group_membership->mid;
+    }
+
+    $gprofile->save();
+  }
+}

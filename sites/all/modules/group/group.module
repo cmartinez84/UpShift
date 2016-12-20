@@ -1,0 +1,212 @@
+<?php
+/**
+ * @file
+ * Main module code for the Group project.
+ */
+
+/**
+ * Define bit flags to limit group permissions with.
+ *
+ * @see hook_group_permission()
+ */
+define('GROUP_LIMIT_ANONYMOUS', 0x01);
+define('GROUP_LIMIT_OUTSIDER', 0x02);
+define('GROUP_LIMIT_MEMBER', 0x04);
+define('GROUP_LIMIT_ALL', 0x07);
+
+/**
+ * Load our helper functions without polluting the .module file.
+ */
+require_once 'helpers/group.entity.inc';
+require_once 'helpers/group_membership.entity.inc';
+require_once 'helpers/group_role.entity.inc';
+require_once 'helpers/group_type.entity.inc';
+require_once 'helpers/group.inc';
+
+/**
+ * Load our entity functions without polluting the .module file.
+ */
+require_once 'group.entity.inc';
+
+/**
+ * Load our router functions without polluting the .module file.
+ */
+require_once 'group.router.inc';
+
+/**
+ * Implements hook_views_api().
+ */
+function group_views_api() {
+  return array('api' => 3);
+}
+
+/**
+ * Implements hook_ctools_plugin_directory().
+ */
+function group_ctools_plugin_directory($module, $plugin) {
+  // We arrange our plugins by the defining module.
+  return "plugins/$module/$plugin";
+}
+
+/**
+ * Implements hook_hook_info().
+ *
+ * Makes sure this module automatically finds exported Group
+ * entities in files using the module.group.inc name pattern.
+ *
+ * Furthermore allows other exposed hooks to live inside the
+ * same file to boost performance when they are not required.
+ */
+function group_hook_info() {
+  $group_hooks = array(
+    'default_group_role',
+    'default_group_type',
+    'group_filters',
+    'group_member_filters',
+    'group_member_operations',
+    'group_member_operation_links',
+    'group_membership_action_info',
+    'group_membership_metadata',
+    'group_membership_profile_info',
+    'group_membership_status_info',
+    'group_operations',
+    'group_operation_links',
+    'group_permission',
+    'group_uninstall',
+  );
+
+  foreach ($group_hooks as $hook) {
+    $hook_info[$hook] = array(
+      'group' => 'group',
+    );
+  }
+
+  return $hook_info;
+}
+
+/**
+ * Implements hook_theme().
+ */
+function group_theme() {
+  $theme['group_permission_description'] = array(
+    'variables' => array(
+      'permission' => NULL,
+      'hide' => NULL,
+    ),
+    'file' => 'theme/group.permission.inc',
+  );
+
+  $theme['group_permission_form'] = array(
+    'render element' => 'form',
+    'file' => 'theme/group.permission.inc',
+  );
+
+  return $theme;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function group_permission() {
+  $permissions = array(
+    'configure group module' => array(
+      'title' => t('Configure Group module'),
+      'description' => t('Configure group types, group roles, member fields, etc.'),
+      'restrict access' => TRUE,
+    ),
+    'bypass group access' => array(
+      'title' => t('Bypass group access control'),
+      'description' => t('View, edit and delete all groups regardless of permission restrictions'),
+      'restrict access' => TRUE,
+    ),
+    'access group overview' => array(
+      'title' => t('Access the group overview page'),
+      'warning' => t('Note: Anonymous users cannot join groups, even if you allow them to create one.'),
+    ),
+  );
+
+  // Generate group creation permissions.
+  foreach (group_types() as $name => $group_type) {
+    $permissions["create $name group"] = array(
+      'title' => t('%type_name: Create new group', array('%type_name' => $group_type->label())),
+    );
+  }
+
+  return $permissions;
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function group_form_system_themes_admin_form_alter(&$form, &$form_state) {
+  $form['admin_theme']['group_admin_theme'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Use the administration theme when editing or creating groups'),
+    '#default_value' => variable_get('group_admin_theme', '0'),
+  );
+
+  $form['#submit'][] = 'group_system_themes_admin_form_submit';
+}
+
+/**
+ * Extra submit handler for admin theme form.
+ */
+function group_system_themes_admin_form_submit($form, &$form_state) {
+  variable_set('group_admin_theme', $form_state['values']['group_admin_theme']);
+}
+
+/**
+ * Implements hook_admin_paths().
+ */
+function group_admin_paths() {
+  if (variable_get('group_admin_theme')) {
+    $paths = array(
+      'group/*/edit' => TRUE,
+      'group/*/delete' => TRUE,
+      'group/*/member' => TRUE,
+      'group/*/member/*/*' => TRUE,
+      'group/add' => TRUE,
+      'group/add/*' => TRUE,
+    );
+
+    return $paths;
+  }
+}
+
+/**
+ * Implements hook_query_TAG_alter().
+ *
+ * Alters the query that generates the group overview table on the
+ * admin/group page by using the selected filters. You can find the
+ * full query in group_groups_form().
+ *
+ * @see hook_group_filters()
+ * @see group_groups_form()
+ */
+function group_query_group_overview_alter(QueryAlterableInterface $query) {
+  // Retrieve the selected filters.
+  $filters = $query->getMetaData('filters');
+
+  if (isset($filters['type'])) {
+    $query->condition('g.type', $filters['type']);
+  }
+}
+
+/**
+ * Implements hook_query_TAG_alter().
+ *
+ * Alters the query that generates the member overview table on the
+ * group/%/members page by using the selected filters. You can find the
+ * full query in group_members_form().
+ *
+ * @see hook_group_member_filters()
+ * @see group_members_form()
+ */
+function group_query_group_member_overview_alter(QueryAlterableInterface $query) {
+  // Retrieve the selected filters.
+  $filters = $query->getMetaData('filters');
+
+  if (isset($filters['status'])) {
+    $query->condition('gm.status', $filters['status']);
+  }
+}

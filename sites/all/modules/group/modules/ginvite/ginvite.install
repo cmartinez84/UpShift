@@ -1,0 +1,138 @@
+<?php
+/**
+ * @file
+ * Install, update and uninstall functions for the Group invite project.
+ */
+
+/**
+ * Schema API definition for the invited_on column.
+ *
+ * Helper function for shared column between invites and memberships.
+ */
+function _ginvite_invited_on() {
+  return array(
+    'description' => 'The Unix timestamp when the invite was issued.',
+    'type' => 'int',
+    'unsigned' => TRUE,
+  );
+}
+
+/**
+ * Schema API definition for the invited_by column.
+ *
+ * Helper function for shared column between invites and memberships.
+ */
+function _ginvite_invited_by() {
+  return array(
+    'description' => 'The {users}.uid of the inviter.',
+    'type' => 'int',
+    'unsigned' => TRUE,
+  );
+}
+
+/**
+ * Implements hook_install().
+ */
+function ginvite_install() {
+  db_update('system')
+    ->fields(array('weight' => 1))
+    ->condition('name', 'ginvite')
+    ->execute();
+
+  db_add_field('group_membership', 'invited_on', _ginvite_invited_on());
+  db_add_field('group_membership', 'invited_by', _ginvite_invited_by());
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function ginvite_uninstall() {
+  db_drop_field('group_membership', 'invited_on');
+  db_drop_field('group_membership', 'invited_by');
+
+  // If Group is still enabled, we remove all memberships that are still set to
+  // invited. Otherwise, we can't run this code without causing a WSOD.
+  if (module_exists('group')) {
+    group_membership_delete_multiple(array_keys(group_memberships(array('status' => 'invited'))));
+  }
+}
+
+/**
+ * Implements hook_schema().
+ */
+function ginvite_schema() {
+  $schema['group_invite'] = array(
+    'description' => 'Stores group e-mail invites.',
+    'fields' => array(
+      'iid' => array(
+        'description' => 'Primary Key: Unique invite item ID.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'gid' => array(
+        'description' => 'The {groups}.gid for the membership.',
+        'type' => 'int',
+        'default' => 0,
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'roles' => array(
+        'description' => 'The group roles for the membership.',
+        'type' => 'text',
+        'not null' => TRUE,
+        'serialize' => TRUE,
+      ),
+      'mail' => array(
+        'description' => 'The e-mail address the invite is for.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'invited_on' => _ginvite_invited_on(),
+      'invited_by' => _ginvite_invited_by(),
+    ),
+    'indexes' => array(
+      'mail' => array('mail'),
+    ),
+    'foreign keys' => array(
+      'group' => array(
+        'table' => 'groups',
+        'columns' => array('gid' => 'gid'),
+      ),
+      'inviter' => array(
+        'table' => 'users',
+        'columns' => array('invited_by' => 'uid'),
+      ),
+    ),
+    'unique keys' => array(
+      'membership' => array('gid', 'mail'),
+    ),
+    'primary key' => array('iid'),
+  );
+
+  return $schema;
+}
+
+/**
+ * Add the invited_on and invited_by columns to {group_invite} and
+ * {group_membership}.
+ */
+function ginvite_update_7001() {
+  $invited_on = _ginvite_invited_on();
+  $invited_by = _ginvite_invited_by();
+
+  db_add_field('group_invite', 'invited_on', $invited_on);
+  db_add_field('group_invite', 'invited_by', $invited_by);
+  db_add_field('group_membership', 'invited_on', $invited_on);
+  db_add_field('group_membership', 'invited_by', $invited_by);
+}
+
+/**
+ * Remove default values from 'invited_on' and 'invited_by'.
+ */
+function ginvite_update_7002() {
+  db_change_field('group_membership', 'invited_on', 'invited_on', _ginvite_invited_on());
+  db_change_field('group_membership', 'invited_by', 'invited_by', _ginvite_invited_by());
+}
