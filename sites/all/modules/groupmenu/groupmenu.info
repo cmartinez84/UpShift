@@ -1,0 +1,16 @@
+name = Group Menu
+description = "Allow group creators and site admins to edit their own group menu."
+core = 7.x
+configure = admin/config/system/groupmenu
+
+dependencies[] = menu
+dependencies[] = group
+
+package = Group
+
+; Information added by Drupal.org packaging script on 2016-06-06
+version = "7.x-1.0-beta1"
+core = "7.x"
+project = "groupmenu"
+datestamp = "1465199641"
+

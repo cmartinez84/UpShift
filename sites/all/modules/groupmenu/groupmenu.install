@@ -1,0 +1,111 @@
+<?php
+/**
+ * @file
+ * Install, update and uninstall functions for the groupmenu module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function groupmenu_schema() {
+  $schema = array();
+
+  $schema['group_menu'] = array(
+    'description' => 'Stores relationships between a Group and their custom menus.',
+    'fields' => array(
+      'menu_name' => array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'gid' => array(
+        'description' => "The group's unique ID.",
+        'type' => 'int',
+        'size' => 'normal',
+        'not null' => TRUE,
+      ),
+    ),
+    'primary key' => array('menu_name'),
+    'foreign keys' => array(
+      'menu_custom' => array(
+        'table' => 'menu_custom',
+        'columns' => array(
+          'menu_name' => 'menu_name',
+        ),
+      ),
+    ),
+  );
+
+  return $schema;
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function groupmenu_uninstall() {
+  // List custom vars.
+  $vars = array(
+    'groupmenu_block_links',
+    'groupmenu_max_menus_per_group',
+    'groupmenu_show_nodetype',
+    'groupmenu_create_by_default',
+  );
+
+  // List all group_menu related node type settings vars.
+  $node_types = node_type_get_types();
+  foreach ($node_types as $type) {
+    $vars[] = 'groupmenu_enable_' . $type->type;
+  }
+
+  // Finally, delete all the vars we listed.
+  foreach ($vars as $var) {
+    variable_del($var);
+  }
+
+  // Delete custom menus.
+  $result = db_select('group_menu', 'm')
+    ->fields('m', array('menu_name'))
+    ->execute();
+
+  while ($record = $result->fetchAssoc()) {
+    if ($menu = menu_load($record['menu_name'])) {
+      menu_delete($menu);
+    }
+  }
+}
+
+/**
+ * Implements hook_install().
+ */
+function groupmenu_install() {
+  $t = get_t();
+
+  $node_types = node_type_get_types();
+  $group_content_types = array();
+  foreach ($node_types as $type) {
+    variable_set('groupmenu_enable_' . $type->type, TRUE);
+    $group_content_types[$type->type] = $type->name;
+  }
+  if (!empty($group_content_types)) {
+    drupal_set_message($t("This update has enabled Group Menu functionality for the following group content types: %types. You can manually disable this on the %ctypes settings page.",
+      array(
+        '%types' => implode(', ', $group_content_types),
+        '%ctypes' => l($t('content types'), 'admin/structure/types'),
+      )
+    ));
+  }
+
+  $updated = db_update('system')
+    ->fields(array('weight' => 2))
+    ->condition('name', 'groupmenu')
+    ->condition('type', 'module')
+    ->execute();
+
+  if ($updated == 1) {
+    return $t('The Group Menu module successfully made it\'s system table update.');
+  }
+  else {
+    throw new DrupalUpdateException('The Group Menu module failed making it\'s system table update. You should apply this manually');
+  }
+}

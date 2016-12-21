@@ -1,0 +1,1105 @@
+<?php
+/**
+ * @file
+ * Integrates menu with Group.
+ */
+
+/**
+ * Implements hook_permission().
+ */
+function groupmenu_permission() {
+  return array(
+    'administer group menu configuration' => array(
+      'title' => t('Administer Group Menu configuration'),
+      'description' => t('Grant access to the global Group Menu configuration.'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_group_permission().
+ */
+function groupmenu_group_permission() {
+  return array(
+    'administer group menu' => array(
+      'title' => t('Administer Group menus'),
+      'description' => t('Administer custom menus in the group context'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_menu().
+ */
+function groupmenu_menu() {
+  $items = array();
+
+  $items['group/%/menus'] = array(
+    'title' => 'Menus',
+    'page callback' => 'groupmenu_overview_page',
+    'page arguments' => array(1),
+    'access callback' => 'groupmenu_access',
+    'access arguments' => array(1),
+    'weight' => 10,
+    'file' => 'groupmenu.pages.inc',
+    'type' => MENU_LOCAL_TASK,
+  );
+
+  $items['group/%/menus/add'] = array(
+    'title' => 'Add menu',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('groupmenu_edit_menu_form', 'add', 1),
+    'access callback' => 'groupmenu_access',
+    'access arguments' => array(1, 'new-menu'),
+    'type' => MENU_LOCAL_ACTION,
+    'weight' => 1,
+    'file' => 'groupmenu.pages.inc',
+  );
+
+  $items['group/%/menus/%menu'] = array(
+    'title' => 'Customize menu',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('groupmenu_overview_form', 1, 3),
+    'access callback' => 'groupmenu_access',
+    'access arguments' => array(1, 'list-menu', 3),
+    'type' => MENU_CALLBACK,
+    'weight' => 1,
+    'file' => 'groupmenu.pages.inc',
+  );
+
+  $items['group/%/menus/%menu/list'] = array(
+    'title' => 'List items',
+    'weight' => -10,
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+  );
+
+  $items['group/%/menus/%menu/add'] = array(
+    'title' => 'Add item',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('groupmenu_edit_item_form', 'add', 1, 3),
+    'access callback' => 'groupmenu_access',
+    'access arguments' => array(1, 'add-menu-item', 3),
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 1,
+    'file' => 'groupmenu.pages.inc',
+  );
+
+  $items['group/%/menus/%menu/edit'] = array(
+    'title' => 'Edit menu',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('groupmenu_edit_menu_form', 'edit', 1, 3),
+    'access callback' => 'groupmenu_access',
+    'access arguments' => array(1, 'edit-menu', 3),
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 1,
+    'file' => 'groupmenu.pages.inc',
+  );
+
+  $items['group/%/menus/%menu/delete'] = array(
+    'title' => 'Delete menu',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('groupmenu_delete_menu_confirm', 3, 1),
+    'access callback' => 'groupmenu_access',
+    'access arguments' => array(1, 'delete-menu', 3),
+    'type' => MENU_CALLBACK,
+    'weight' => 1,
+    'file' => 'groupmenu.pages.inc',
+  );
+
+  $items['group/%/menus/%menu/item/%menu_link/edit'] = array(
+    'title' => 'Edit menu item',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('groupmenu_edit_item_form', 'edit', 1, 3, 5),
+    'access callback' => 'groupmenu_access',
+    'access arguments' => array(1, 'edit-menu-item', 3, 5),
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 1,
+    'file' => 'groupmenu.pages.inc',
+  );
+
+  $items['group/%/menus/%menu/item/%menu_link/delete'] = array(
+    'title' => 'Delete menu item',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('groupmenu_delete_item_form', 5, 1, 3),
+    'access callback' => 'groupmenu_access',
+    'access arguments' => array(1, 'delete-menu-item', 3, 5),
+    'type' => MENU_CALLBACK,
+    'weight' => 1,
+    'file' => 'groupmenu.pages.inc',
+  );
+
+  $items['admin/config/system/groupmenu'] = array(
+    'title' => 'Group menu',
+    'description' => 'Configure Group menu settings.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('groupmenu_config_form'),
+    'access arguments' => array('administer group menu configuration'),
+    'file' => 'groupmenu.admin.inc',
+  );
+
+  $items['admin/structure/groupmenu'] = array(
+    'title' => 'Group menus',
+    'description' => 'Administer Group menus on your site, edit, rename and reorganize menu links for specific group menus.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('groupmenu_admin_menu_overview_form'),
+    'access callback' => 'user_access',
+    'access arguments' => array('administer menu'),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'groupmenu.pages.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_admin_paths().
+ */
+function groupmenu_admin_paths() {
+  if (variable_get('group_admin_theme')) {
+    $paths = array(
+      'group/*/menus' => TRUE,
+      'group/*/menus/*' => TRUE,
+    );
+
+    return $paths;
+  }
+}
+
+/**
+ * Implements hook_form_FORMID_alter().
+ *
+ * Alter the node form's menu form.
+ * We modify the forms for group content and group content types.
+ */
+function groupmenu_form_node_form_alter(&$form, &$form_state) {
+  $node = $form_state['node'];
+  $type = $node->type;
+
+  if (!empty($node->nid) && !isset($node->group)) {
+    return;
+  }
+
+  if (variable_get('groupmenu_enable_' . $type, FALSE)) {
+    // Available menus were discovered in groupmenu_node_prepare().
+    $menus = $form['#node']->storage['groupmenu'];
+
+    $list = array();
+    if (!empty($menus)) {
+      $settings['mlid'] = (empty($form['#node']->menu['mlid'])) ? 0 : $form['#node']->menu['mlid'];
+      $settings['administer_group'] = user_access('configure group module');
+      foreach ($menus as $menu) {
+        $list[$menu['menu_name']] = $menu['title'];
+        $settings['menus'][$menu['menu_name']] = $menu['gid'];
+      }
+
+      // If user has administer menu permission, also show other menu options.
+      $settings['standard_parent_options'] = array();
+      if (user_access('administer menu')) {
+        // Gets menus available to this content type.
+        $type_menus = variable_get('menu_options_' . $type, array('main-menu' => 'main-menu'));
+        $available_menus = array();
+        // Get all existing menus with their name.
+        $result = db_query("SELECT menu_name, title FROM {menu_custom} ORDER BY title");
+        while ($menu = $result->fetchObject()) {
+          if (in_array($menu->menu_name, $type_menus)) {
+            $available_menus[$menu->menu_name] = $menu->title;
+          }
+        }
+
+        $settings['standard_parent_options'] = menu_parent_options($available_menus, $type);
+        // We want to merge the menus the user has available anyway and the
+        // Group ones.
+        $merged_list = array_merge($available_menus, $list);
+      }
+      else {
+        $merged_list = $list;
+      }
+
+      // Get the group that this node is linked to.
+      $gid = !empty($node->group) ? $node->group : 0;
+      $settings['group_id'] = $gid;
+
+      // Menu parent options will format the list in a way Drupal expects and
+      // give children, etc.
+      $options = menu_parent_options($merged_list, array('mlid' => 0));
+
+      // If user does not have administer menu, this field set won't be created.
+      if (!isset($form['menu'])) {
+        if (empty($options)) {
+          return;
+        }
+        $link = $form['#node']->menu;
+        _groupmenu_add_menufieldset($form, $options, $link);
+      }
+
+      $settings['parent_options'] = $options;
+
+      if (isset($node->group)) {
+        // Set the default menu based upon the group.
+        $selected_group_menu = array();
+        foreach ($node->storage['groupmenu'] as $group_menus) {
+          if ($group_menus['gid'] == $node->group) {
+            $selected_group_menu = $group_menus;
+            break;
+          }
+        }
+        foreach (array_keys($options) as $option) {
+          list($menu_id,) = explode(':', $option);
+
+          if ($menu_id == $selected_group_menu['menu_name']) {
+            $parent = (empty($form['#node']->menu['plid'])) ? $option : $menu_id . ':' . $form['#node']->menu['plid'];;
+            $form['menu']['link']['parent']['#default_value'] = $parent;
+            break;
+          }
+        }
+      }
+
+      $form['menu']['#access'] = !empty($options);
+      $form['menu']['#attached']['js'][] = drupal_get_path('module', 'groupmenu') . '/groupmenu.js';
+      $form['menu']['#attached']['js'][] = array(
+        'data' => array('groupMenu' => $settings),
+        'type' => 'setting',
+      );
+      $form['menu']['#settings'] = $merged_list;
+      $form['menu']['link']['parent']['#options'] = $options;
+      if (!user_access('administer menu')) {
+        $form['#validate'][] = 'groupmenu_node_form_validate';
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_form_FORMID_alter().
+ *
+ * Integration with menu module for node type admin page.
+ * Hides Group Menus from available menu settings.
+ */
+function groupmenu_form_node_type_form_alter(&$form, &$form_state) {
+  if (!variable_get('groupmenu_show_nodetype', FALSE)) {
+    // Remove Group Menus from the list by default.
+    $result = db_query("SELECT mc.menu_name FROM {menu_custom} mc, {group_menu} gm WHERE gm.menu_name = mc.menu_name")->fetchCol();
+    foreach ($result as $groupblock) {
+      unset($form['menu']['menu_options']['#options'][$groupblock]);
+    }
+  }
+
+  // Provide a setting to enable Group Menus on this content type.
+  $form['menu']['groupmenu_enable'] = array(
+    '#type' => 'checkbox',
+    '#title' => t("Enable for Group Menus"),
+    '#default_value' => variable_get('groupmenu_enable_' . $form['#node_type']->type, FALSE),
+    '#description' => t("Allow nodes of this content type to be added to Group Menus."),
+  );
+}
+
+/**
+ * Implements hook_form_FORMID_alter().
+ */
+function groupmenu_form_menu_delete_menu_confirm_alter(&$form, &$form_state) {
+  $form['#submit'][] = 'groupmenu_delete_menu_confirm_submit';
+}
+
+/**
+ * Implements hook_admin_menu_output_alter().
+ *
+ * Integration with admin_menu module.
+ * Remove Group Menus from Admin Menu as this adds a lot of clutter.
+ */
+function groupmenu_admin_menu_output_alter(&$content) {
+  if (isset($content['menu']['admin/structure']['admin/structure/menu'])) {
+    foreach ($content['menu']['admin/structure']['admin/structure/menu'] as $key => $menu) {
+      if (preg_match('/^admin\/structure\/menu\/manage\/(\S+)$/', $key, $matches)) {
+        $result = db_query("SELECT distinct gm.gid FROM {group_menu} as gm where gm.menu_name = :key", array(':key' => $matches[1]))->fetchCol();
+        if (isset($result[0])) {
+          unset($content['menu']['admin/structure']['admin/structure/menu'][$key]);
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_node_prepare().
+ */
+function groupmenu_node_prepare($node) {
+  if (!empty($node->nid) && !isset($node->group)) {
+    return;
+  }
+
+  // New node.
+  if (empty($node->nid)) {
+    $node->groupmenu = (bool) variable_get('groupmenu_create_by_default', FALSE);
+    $groups = empty($node->group) ? _groupmenu_get_user_group_ids() : array($node->group);
+  }
+  // Existing node.
+  else {
+    // Get all menus for available groups.
+    $groups = array($node->group);
+    $menus = groupmenu_get_group_menus($groups);
+    $node->groupmenu = !empty($menus);
+  }
+
+  if (variable_get('groupmenu_enable_' . $node->type, FALSE)) {
+    // Get all menus for available groups.
+    $menus = groupmenu_get_group_menus($groups);
+
+    // Store the menus for later use in form_alter and form_validate.
+    $node->storage['groupmenu'] = $menus;
+    // $node is not a new node and menu link is not set.
+    if (!empty($node->nid) && empty($node->menu['link_title']) && !empty($menus)) {
+      $menu_names = array();
+      foreach ($menus as $menu) {
+        $menu_names[] = $menu['menu_name'];
+      }
+      // This query comes from menu.modules node_prepare, and is how it does it.
+      $mlid = db_query_range("SELECT mlid FROM {menu_links} WHERE link_path = :path AND module = 'menu' AND menu_name IN (:type_menus) ORDER BY mlid ASC", 0, 1, array(
+        ':path' => 'node/' . $node->nid,
+        ':type_menus' => $menu_names,
+      ))->fetchField();
+
+      if ($mlid) {
+        // We've found something, so load the item and set that in the node
+        // form.
+        $item = menu_link_load($mlid);
+        $options = menu_parent_options(array($item['menu_name']), $item);
+        if (!empty($options)) {
+          $node->menu = $item;
+          // Find the depth limit for the parent select.
+          if (!isset($node->menu['parent_depth_limit'])) {
+            $node->menu['parent_depth_limit'] = _menu_parent_depth_limit($node->menu);
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_entity_insert().
+ */
+function groupmenu_entity_insert($entity, $type) {
+  if ($type != 'group') {
+    return;
+  }
+
+  /** @var Group $entity */
+  if (variable_get('groupmenu_create_by_default', FALSE)) {
+    $menu_name = 'menu-group-' . $entity->gid;
+    menu_save(array(
+      'menu_name' => $menu_name,
+      'title' => $entity->title,
+      'description' => t('Group Menu for @title', array('@title' => $entity->title)),
+    ));
+    groupmenu_update_menu('menu-group-' . $entity->gid, $entity->gid);
+
+    // Also create an initial menu entry for the new group.
+    $item = array(
+      'link_path' => drupal_get_normal_path('group/' . $entity->gid),
+      'link_title' => $entity->title,
+      'menu_name' => $menu_name,
+    );
+    menu_link_save($item);
+  }
+
+  groupmenu_group_save($entity);
+}
+
+/**
+ * Implements hook_entity_update().
+ */
+function groupmenu_entity_update($entity, $type) {
+  if ($type != 'group') {
+    return;
+  }
+
+  $menu = groupmenu_get_group_menus(array($entity->gid));
+  if (empty($menu)) {
+    menu_save(array(
+      'menu_name' => 'menu-group-' . $entity->gid,
+      'title' => $entity->title,
+      'description' => t('Group Menu for @title', array('@title' => $entity->title)),
+    ));
+    groupmenu_update_menu('menu-group-' . $entity->gid, $entity->gid);
+  }
+
+  groupmenu_group_save($entity);
+}
+
+/**
+ * Process menu links for group on group save.
+ */
+function groupmenu_group_save(Group $group) {
+  if (isset($group->menu)) {
+    $link = &$group->menu;
+
+    if (!empty($link['parent'])) {
+      list($link['menu_name'], $link['plid']) = explode(':', $link['parent']);
+    }
+
+    if (empty($link['enabled'])) {
+      if (!empty($link['mlid'])) {
+        menu_link_delete($link['mlid']);
+      }
+    }
+    elseif (trim($link['link_title'])) {
+      $link['link_title'] = trim($link['link_title']);
+      $link['link_path'] = "group/$group->gid";
+      if (trim($link['description'])) {
+        $link['options']['attributes']['title'] = trim($link['description']);
+      }
+      else {
+        // If the description field was left empty, remove the title attribute
+        // from the menu link.
+        unset($link['options']['attributes']['title']);
+      }
+      if (!menu_link_save($link)) {
+        drupal_set_message(t('There was an error saving the menu link.'), 'error');
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_entity_delete().
+ */
+function groupmenu_entity_delete($entity, $type) {
+  if ($type != 'group') {
+    return;
+  }
+  $result = db_select('group_menu', 'm')
+    ->fields('m', array('menu_name'))
+    ->condition('gid', $entity->gid, '=')
+    ->execute();
+
+  while ($record = $result->fetchAssoc()) {
+    $menu = menu_load($record['menu_name']);
+    menu_delete($menu);
+    groupmenu_delete_menu($record['menu_name']);
+  }
+}
+
+/**
+ * Validation handler for Group node forms.
+ *
+ * We will only end up here if we have confirmed that the node is a group type
+ * content.
+ */
+function groupmenu_node_form_validate($form, &$form_state) {
+  // If the user didn't ask for a menu, we have nothing to do.
+  if (!isset($form_state['values']['menu']['enabled']) || $form_state['values']['menu']['enabled'] !== 1) {
+    return;
+  }
+
+  // Available menus were discovered in groupmenu_node_prepare().
+  $menus = $form['#node']->storage['groupmenu'];
+  $parents = explode(':', $form_state['values']['menu']['parent']);
+  $parent = $parents[0];
+  $has_menu_access = FALSE;
+  $gids = _groupmenu_get_user_group_ids();
+
+  foreach ($menus as $menu) {
+    if ($menu['menu_name'] == $parent) {
+      // Check if user has access to the chosen menu parent.
+      $has_menu_access = TRUE;
+      // Check if menu belongs to one of the selected groups.
+      if (!in_array($menu['gid'], $gids)) {
+        form_set_error('group_groups', t('The menu you chose does not belong to the selected groups.'));
+      }
+    }
+  }
+  if (!$has_menu_access) {
+    form_set_error('menu][parent', t('You cannot add menu items to this menu. Choose another parent menu.'));
+  }
+}
+
+/**
+ * Updates internal record of group's menu id.
+ */
+function groupmenu_update_menu($menu_name, $gid) {
+  db_merge('group_menu')
+    ->key(array('menu_name' => $menu_name))
+    ->fields(array(
+      'gid' => $gid,
+    ))
+    ->execute();
+}
+
+/**
+ * Deletes menus for group menu table.
+ */
+function groupmenu_delete_menu($menu_name) {
+  db_delete('group_menu')
+    ->condition('menu_name', $menu_name)
+    ->execute();
+}
+
+/**
+ * Returns accessible menus for a given user or gids in a structured array.
+ *
+ * @param array $gids
+ *   An optional array of group ids.
+ *
+ * @return array
+ *   A structured array with menus list.
+ */
+function groupmenu_get_group_menus($gids = array()) {
+  if (empty($gids)) {
+    $gids = _groupmenu_get_user_group_ids();
+  }
+
+  if (empty($gids)) {
+    return array();
+  }
+
+  $query = db_select('group_menu', 'gm');
+  $query->join('menu_custom', 'm', 'gm.menu_name = m.menu_name');
+  $query
+    ->fields('gm', array('gid', 'menu_name'))
+    ->fields('m', array('title'))
+    ->condition('gm.gid', $gids, 'IN');
+
+  $result = $query->execute();
+
+  $menus = array();
+  while ($record = $result->fetchAssoc()) {
+    $menus[] = $record;
+  }
+
+  return $menus;
+}
+
+/**
+ * Returns menus for a given gid in a structured array.
+ *
+ * @param int $gid
+ *   The group id.
+ *
+ * @return array
+ *   A structured array with menus list.
+ */
+function groupmenu_get_menus($gid) {
+  // If function arguments are empty, return.
+  if (empty($gid)) {
+    return array();
+  }
+
+  $q = db_select('group_menu', 'gm');
+  $q->join('menu_custom', 'm', 'gm.menu_name = m.menu_name');
+  return $q->fields('gm', array('gid', 'menu_name'))
+    ->fields('m', array('title', 'description'))
+    ->condition('gm.gid', $gid)
+    ->orderBy('m.title')
+    ->execute()
+    ->fetchAllAssoc('menu_name');
+}
+
+/**
+ * Access function.
+ */
+function groupmenu_access($gid, $op = NULL, $menu = NULL, $menu_item = NULL) {
+  // Make sure that menu, is an groupmenu-menu and belongs to the given group.
+  if ($menu) {
+    $query = db_select('group_menu', 'gm');
+    $query->condition('gm.gid', $gid, '=');
+    $query->condition('gm.menu_name', $menu['menu_name'], '=');
+    $count = $query->countQuery()->execute()->fetchField();
+    if (!$count) {
+      return FALSE;
+    }
+
+    // Make sure, that menu-item is an item of the groupmenu-menu.
+    if ($menu_item && $menu['menu_name'] != $menu_item['menu_name']) {
+      return FALSE;
+    }
+  }
+
+  $group = group_load($gid);
+  if (empty($group)) {
+    return FALSE;
+  }
+
+  if (user_access('administer menu')) {
+    return TRUE;
+  }
+  elseif (group_access('administer group menu', $group)) {
+    if ($op == 'new-menu') {
+      $query = db_select('group_menu', 'gm');
+      $query->condition('gm.gid', $gid, '=');
+      $count = $query->countQuery()->execute()->fetchField();
+      $max = variable_get('groupmenu_max_menus_per_group', 1);
+      if ($max > 0 && $count >= $max) {
+        return FALSE;
+      }
+      else {
+        return TRUE;
+      }
+    }
+    else {
+      // Return true for all other cases edit menu, add/edit links.
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+
+/**
+ * Generic redirect function.
+ */
+function groupmenu_redirect($form, &$form_state) {
+  $gid = $form['groupmenu_gid']['#value'];
+  $menu_name = $form['groupmenu_name']['#value'];
+  $form_state['redirect'] = 'group/' . $gid . '/menus/' . $menu_name;
+}
+
+/**
+ * Submit handler used on various forms.
+ */
+function groupmenu_edit_menu_form_submit($form, &$form_state) {
+  $menu_name = $form_state['values']['menu_name'];
+  $gid = $form_state['values']['groupmenu_gid'];
+  if (!empty($gid)) {
+    // If this is a new menu.
+    if ($form['#insert']) {
+      $menu_name = 'menu-' . $menu_name;
+    }
+    if (is_numeric($gid)) {
+      groupmenu_update_menu($menu_name, $gid);
+    }
+    else {
+      preg_match('/^(?:\s*|(.*) )?\[\s*gid\s*:\s*(\d+)\s*\]$/', $gid, $matches);
+      if (!empty($matches)) {
+        $gid = $matches[count($matches) - 1];
+        if (is_numeric($gid)) {
+          groupmenu_update_menu($menu_name, $gid);
+        }
+      }
+      else {
+        drupal_set_message(t('Cannot assign menu to invalid group, please retry'), 'error');
+      }
+    }
+  }
+  else {
+    db_delete('group_menu')->condition('menu_name', $menu_name)->execute();
+  }
+}
+
+/**
+ * Submit handler used on various forms.
+ */
+function groupmenu_delete_menu_confirm_submit($form, &$form_state) {
+  $menu = $form['#menu'];
+  groupmenu_delete_menu($menu['menu_name']);
+}
+
+/**
+ * Submit handler used on various forms.
+ */
+function groupmenu_delete_menu_confirm_submit_redirect($form, &$form_state) {
+  $gid = $form['groupmenu_gid']['#value'];
+  $form_state['redirect'] = 'group/' . $gid . '/menus';
+}
+
+/**
+ * Implements hook_menu_delete().
+ *
+ * Looks like groupmenu did not used to catch the case where a menu item was
+ * deleted in the admin area, and forgot to delete it's own db_record.
+ */
+function groupmenu_menu_delete($menu) {
+  db_delete('group_menu')->condition('menu_name', $menu['menu_name'])->execute();
+}
+
+/**
+ * Override menu.module's menu_overview_page().
+ *
+ * We do this so that we can filter out groupmenu created menus from the
+ * listing so that we don't flood the admin pages.
+ *
+ * @see menu_overview_page()
+ *
+ * @todo get this into groupmenu_pages.inc
+ */
+function groupmenu_admin_standard_menu_overview_page() {
+  $result = db_query('SELECT *
+    FROM {menu_custom} mc
+    WHERE NOT EXISTS (SELECT gm.menu_name
+    FROM {group_menu} gm
+    WHERE gm.menu_name = mc.menu_name)
+    ORDER BY title;', array(), array('fetch' => PDO::FETCH_ASSOC));
+
+  $header = array(
+    t('Title'),
+    array(
+      'data' => t('Operations'),
+      'colspan' => '3',
+    ),
+  );
+
+  $rows = array();
+  foreach ($result as $menu) {
+    $row = array(
+      theme('menu_admin_overview', array(
+        'title' => $menu['title'],
+        'name' => $menu['menu_name'],
+        'description' => $menu['description'],
+      )),
+    );
+    $row[] = array('data' => l(t('list links'), 'admin/structure/menu/manage/' . $menu['menu_name']));
+    $row[] = array('data' => l(t('edit menu'), 'admin/structure/menu/manage/' . $menu['menu_name'] . '/edit'));
+    $row[] = array('data' => l(t('add link'), 'admin/structure/menu/manage/' . $menu['menu_name'] . '/add'));
+    $rows[] = $row;
+  }
+
+  return theme('table', array('header' => $header, 'rows' => $rows));
+}
+
+/**
+ * Implements hook_menu_alter().
+ *
+ * We use this to override the /admin/structure/menu callback and replace it
+ * with our own groupmenu_admin_menu_overview_page().
+ */
+function groupmenu_menu_alter(&$items) {
+  $items['admin/structure/menu']['page callback'] = 'groupmenu_admin_standard_menu_overview_page';
+  $items['admin/structure/menu']['file'] = 'groupmenu.module';
+  $items['admin/structure/menu']['module'] = 'groupmenu';
+}
+
+/**
+ * Adds a standard menu fieldset to a form, mainly copied from menu.module.
+ *
+ * @param array $form
+ *   The form we will add a menu field set to.
+ * @param array $options
+ *   The menu options return by menu_parent_options().
+ * @param array $link
+ *   The menu link item array.
+ */
+function _groupmenu_add_menufieldset(array &$form, array $options, array $link) {
+  $form['menu'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Menu settings'),
+    '#collapsible' => TRUE,
+    '#collapsed' => !$link['link_title'],
+    '#group' => 'additional_settings',
+    '#attached' => array(
+      'js' => array(drupal_get_path('module', 'menu') . '/menu.js'),
+    ),
+    '#tree' => TRUE,
+    '#weight' => -2,
+    '#attributes' => array('class' => array('menu-link-form')),
+  );
+  $form['menu']['enabled'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Provide a menu link'),
+    '#default_value' => (int) (bool) $link['mlid'],
+  );
+  $form['menu']['link'] = array(
+    '#type' => 'container',
+    '#parents' => array('menu'),
+    '#states' => array(
+      'invisible' => array(
+        'input[name="menu[enabled]"]' => array('checked' => FALSE),
+      ),
+    ),
+  );
+
+  // Populate the element with the link data.
+  $elements = array(
+    'mlid',
+    'module',
+    'hidden',
+    'has_children',
+    'customized',
+    'options',
+    'expanded',
+    'hidden',
+    'parent_depth_limit',
+  );
+  foreach ($elements as $key) {
+    $form['menu']['link'][$key] = array(
+      '#type' => 'value',
+      '#value' => $link[$key],
+    );
+  }
+
+  $form['menu']['link']['link_title'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Menu link title'),
+    '#default_value' => $link['link_title'],
+  );
+
+  $form['menu']['link']['description'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Description'),
+    '#default_value' => isset($link['options']['attributes']['title']) ? $link['options']['attributes']['title'] : '',
+    '#rows' => 1,
+    '#description' => t('Shown when hovering over the menu link.'),
+  );
+
+  $default = ($link['mlid'] ? $link['menu_name'] . ':' . $link['plid'] : NULL);
+  if (!isset($options[$default])) {
+    $array = array_keys($options);
+    $default = reset($array);
+  }
+  $form['menu']['link']['parent'] = array(
+    '#type' => 'select',
+    '#title' => t('Parent item'),
+    '#default_value' => $default,
+    '#options' => $options,
+    '#attributes' => array('class' => array('menu-parent-select')),
+  );
+  $form['menu']['link']['weight'] = array(
+    '#type' => 'weight',
+    '#title' => t('Weight'),
+    '#delta' => 50,
+    '#default_value' => $link['weight'],
+    '#description' => t('Menu links with smaller weights are displayed before links with larger weights.'),
+  );
+}
+
+/**
+ * Gets an array of a members group ids.
+ *
+ * @return array
+ *   An array of the group ids that the user is a member of.
+ */
+function _groupmenu_get_user_group_ids() {
+  global $user;
+  $member_groups = group_load_by_member($user->uid);
+  return array_keys($member_groups);
+}
+
+/**
+ * Implements hook_group_admin_block_alter().
+ */
+function groupmenu_group_admin_block_alter(array &$block) {
+  if (!module_exists('groupcontext')) {
+    return;
+  }
+
+  $group_context = groupcontext();
+
+  if (empty($group_context)) {
+    return;
+  }
+
+  $href = "group/{$group_context}/menus";
+
+  $menus = groupmenu_get_menus($group_context);
+
+  if (count($menus) === 1) {
+    $menu = reset($menus);
+    $href = "group/{$group_context}/menus/{$menu->menu_name}";
+  }
+
+  $block['content']['edit_menu'] = array(
+    '#theme' => 'menu_link__group_admin_block',
+    '#attributes' => array(),
+    '#below' => array(),
+    '#localized_options' => array('html' => TRUE),
+    '#title' => t('Manage the menu'),
+    '#href' => $href,
+    '#weight' => 0,
+  );
+}
+
+/**
+ * Get the primary group menu link for a group.
+ *
+ * @param Group $group
+ *   A Group to get the primary menu link for.
+ *
+ * @return array
+ *   A menu link array
+ */
+function _groupmenu_get_group_menu_link(Group $group) {
+  $menu_name = '';
+
+  if (empty($group->menu)) {
+    $item = array();
+
+    if (isset($group->gid)) {
+      $mlid = FALSE;
+
+      $type_menus = array();
+      $menus = groupmenu_get_group_menus(array($group->gid));
+
+      // Check all allowed menus if a link does not exist in the default menu.
+      if (!empty($menus)) {
+
+        foreach ($menus as $menu) {
+          $type_menus[] = $menu['menu_name'];
+        }
+
+        $menu_name = $type_menus[0];
+
+        $mlid = db_query_range("SELECT mlid FROM {menu_links} WHERE link_path = :path AND module = 'menu' AND menu_name IN (:type_menus) ORDER BY mlid ASC", 0, 1, array(
+          ':path' => 'group/' . $group->gid,
+          ':type_menus' => array_values($type_menus),
+        ))->fetchField();
+      }
+
+      if ($mlid) {
+        $item = menu_link_load($mlid);
+      }
+    }
+
+    // Set default values.
+    $item = $item + array(
+      'link_title' => '',
+      'mlid' => 0,
+      'plid' => 0,
+      'menu_name' => $menu_name,
+      'weight' => 0,
+      'options' => array(),
+      'module' => 'menu',
+      'expanded' => 0,
+      'hidden' => 0,
+      'has_children' => 0,
+      'customized' => 0,
+    );
+  }
+
+  // Find the depth limit for the parent select.
+  if (!isset($item['parent_depth_limit'])) {
+    $item['parent_depth_limit'] = _menu_parent_depth_limit($item);
+  }
+
+  return $item;
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function groupmenu_form_group_form_alter(&$form, &$form_state) {
+  $group = $form_state['build_info']['args'][0];
+
+  if (empty($group->gid)) {
+    // We don't get the option to add to a menu when the group is
+    // created as there are no groups at the moment.
+    return;
+  }
+
+  // If there is no menu already available on the group, then add it.
+  if (empty($group->menu)) {
+    $group->menu = _groupmenu_get_group_menu_link($group);
+  }
+
+  $menus = groupmenu_get_group_menus(array($group->gid));
+
+  if (empty($menus)) {
+    return;
+  }
+
+  $list = array();
+
+  foreach ($menus as $menu) {
+    $list[$menu['menu_name']] = $menu['title'];
+  }
+
+  $options = menu_parent_options($list, array('mlid' => 0));
+  $link = $group->menu;
+
+  _groupmenu_add_menufieldset($form, $options, $link);
+}
+
+/**
+ * Implements hook_block_info().
+ */
+function groupmenu_block_info() {
+  // Blocks can only be used when using the groupcontext module.
+  // @see https://www.drupal.org/sandbox/mike.davis/2568111.
+  if (!module_exists('groupcontext')) {
+    return array();
+  }
+
+  $blocks = array(
+    'groupmenu_single_block' => array('info' => t('Group Menu : single'), 'cache' => DRUPAL_NO_CACHE),
+    'groupmenu_multi_block' => array('info' => t('Group Menu : multiple'), 'cache' => DRUPAL_NO_CACHE),
+  );
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function groupmenu_block_view($delta = '') {
+  $block = array();
+
+  // Blocks can only be used when using the groupcontext module.
+  // @see https://www.drupal.org/sandbox/mike.davis/2568111.
+  if (!module_exists('groupcontext')) {
+    return array();
+  }
+
+  $gid = groupcontext();
+
+  if (empty($gid)) {
+    return array();
+  }
+
+  $group = group_load($gid);
+
+  if ($delta == 'groupmenu_single_block') {
+    $menus = groupmenu_get_group_menus(array($group->gid));
+    $menu = array_shift($menus);
+    if ($menu) {
+      if (variable_get('groupmenu_block_links', FALSE)) {
+        $block['subject'] = l($menu['title'], 'group/' . $menu['gid']);
+      }
+      else {
+        $block['subject'] = check_plain($menu['title']);
+      }
+      $block['content'] = menu_tree($menu['menu_name']);
+
+      // Add contextual links.
+      if (!empty($block['content']) && in_array($menu['menu_name'], array_keys(menu_get_menus()))) {
+        $block['content']['#contextual_links']['group_menu'] = array(
+          'admin/structure/menu/manage',
+          array($menu['menu_name']),
+        );
+      }
+    }
+  }
+  elseif ($delta == 'groupmenu_multi_block') {
+    $menus = groupmenu_get_group_menus(array($group->gid));
+    $plural = count($menus) > 1 ? TRUE : FALSE;
+    $block['content'] = '';
+    foreach ($menus as $menu) {
+      if (!isset($block['content']['#contextual_links'])) {
+        // Add contextual links for first menu.
+        // @TODO Find a proper solution for displaying contextual links for all menus.
+        if (in_array($menu['menu_name'], array_keys(menu_get_menus()))) {
+          $block['content']['#contextual_links']['group_menu'] = array(
+            'admin/structure/menu/manage',
+            array($menu['menu_name']),
+          );
+        }
+      }
+      $title = check_plain($menu['title']);
+      if (variable_get('groupmenu_block_links', FALSE)) {
+        $title = l($menu['title'], 'group/' . $menu['gid']);
+      }
+      if ($tree = menu_tree($menu['menu_name'])) {
+        if ($plural) {
+          $block['subject'] = '';
+          if (!isset($block['content']['#markup'])) {
+            $block['content']["#markup"] = '';
+          }
+          $block['content']['#markup'] .= '<div class="block-group-menu-inset">'
+            . '<h2 class="block-title">' . $title . '</h2>'
+            . render($tree) . '</div>';
+        }
+        else {
+          $block['subject'] = $title;
+          $tree = menu_tree($menu['menu_name']);
+          $block['content'] = $tree;
+        }
+      }
+    }
+  }
+
+  return empty($block['content']) ? array() : $block;
+}
