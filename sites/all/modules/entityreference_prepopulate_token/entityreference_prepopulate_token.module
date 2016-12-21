@@ -1,0 +1,124 @@
+<?php
+
+/**
+ * Get values for prepopulating fields from tokens or panel pane contexts.
+ */
+function entityreference_prepopulate_token_get_values_from_patterns($field, $instance) {
+  if (empty($instance['settings']['behaviors']['prepopulate']['token_patterns'])) {
+    return NULL;
+  }
+
+  $values = array();
+  $patterns = explode(',', $instance['settings']['behaviors']['prepopulate']['token_patterns']);
+  foreach ($patterns as $pattern) {
+    $pattern = trim($pattern);
+    if (!empty($pattern)) {
+      $value = entityreference_prepopulate_token_substitute_pattern($pattern);
+      if (!empty($value)) {
+        $values[] = $value;
+      }
+    }
+  }
+
+  return (!empty($values)) ? $values : NULL;
+}
+
+/**
+ * implements hook_entityreference_prepopulate_providers_info().
+ */
+function entityreference_prepopulate_token_entityreference_prepopulate_providers_info() {
+  $tokens = array('@token1' => '[current-page:url:unaliased:args:value:1]', '@token2' => '%node:nid');
+  $help = t('Prepopulate from tokens or panel pane context. Specify comma separated list of replacement patterns (such as @token1 or @token2). The acceptable patterns will be used to construct field values.',
+    $tokens);
+
+  return array(
+    'token_patterns' => array(
+      'title' => t('Tokens and panel pane context'),
+      'description' => $help,
+      'callback' => 'entityreference_prepopulate_token_get_values_from_patterns',
+    ),
+  );
+}
+
+/**
+ * Implements hook_panels_panes_prepared_alter().
+ */
+function entityreference_prepopulate_token_panels_panes_prepared_alter($panes, $renderer) {
+  entityreference_prepopulate_token_current_display($renderer->display);
+}
+
+/**
+ * Remembers the current display for context retrieving.
+ */
+function entityreference_prepopulate_token_current_display($display = NULL) {
+  static $current_display = NULL;
+  if (!is_null($display)) {
+    $current_display = $display;
+  }
+
+  return $current_display;
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function entityreference_prepopulate_token_form_field_ui_field_edit_form_alter(&$form, &$form_state, $form_id) {
+  if (isset($form['instance']['settings']['settings']['#process'])) {
+    $process = &$form['instance']['settings']['settings']['#process'];
+    if (in_array('_entityreference_field_instance_settings_form', $process)) {
+      $process[] = 'entityreference_prepopulate_token_settings_form';
+    }
+  }
+}
+
+function entityreference_prepopulate_token_settings_form($form, $form_state) {
+  if (isset($form['behaviors']['prepopulate']['settings']['providers']['title']['token_patterns'])) {
+    $instance = isset($form_state['entityreference']['instance']) ? $form_state['entityreference']['instance'] : $form['#instance'];
+
+    $patterns = '';
+    if (isset($instance['settings']['behaviors']['prepopulate']['token_patterns'])) {
+      $patterns = $instance['settings']['behaviors']['prepopulate']['token_patterns'];
+    }
+
+    $title_element = $form['behaviors']['prepopulate']['settings']['providers']['title']['token_patterns'];
+
+    $form['behaviors']['prepopulate']['settings']['providers']['title']['token_patterns'] = array(
+      '#type' => 'container',
+      'title' => $title_element,
+      'token_patterns' => array(
+        '#type' => 'textfield',
+        '#default_value' => $patterns,
+        '#size' => 40,
+        '#element_validate' => array('entityreference_prepopulate_token_settings_form_validate'),
+      ),
+    );
+  }
+
+  return $form;
+}
+
+function entityreference_prepopulate_token_settings_form_validate($element, &$form_state) {
+  if (isset($form_state['values']['instance']['settings']['behaviors']['prepopulate']['providers']['title']['token_patterns']['token_patterns'])) {
+    $form_state['values']['instance']['settings']['behaviors']['prepopulate']['token_patterns']
+      = $form_state['values']['instance']['settings']['behaviors']['prepopulate']['providers']['title']['token_patterns']['token_patterns'];
+  }
+}
+
+function entityreference_prepopulate_token_substitute_pattern($pattern) {
+  $first = substr($pattern, 0, 1);
+
+  if ($first === '[') {
+    return token_replace($pattern, array(), array('clear' => TRUE));
+  }
+
+  if ($first === '%') {
+    $display = entityreference_prepopulate_token_current_display();
+    if ((empty($display)) || (empty($display->context)) || (!function_exists('ctools_context_keyword_substitute'))) {
+      return NULL;
+    }
+    $value = ctools_context_keyword_substitute($pattern, array(), $display->context);
+    return (substr($value, 0, 1) !== '%') ? $value : NULL;
+  }
+
+  return NULL;
+}
