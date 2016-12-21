@@ -1,0 +1,29 @@
+<?php
+
+/**
+ * @file
+ * user_relationships_entity.module
+ */
+
+include_once __DIR__ . '/includes/user_relationships_entity.entity.inc';
+
+/**
+ * Implements hook_user_relationships_save().
+ */
+function user_relationships_entity_user_relationships_save($relationship, $action) {
+  // Ergh, dislike this greatly. Set and save a type in this record.
+  $types = user_relationships_types_load();
+  $type = $types[$relationship->rtid];
+
+  // This will take care of any relationships which exist, regardless of how
+  // many exist with one rid (which can be more than 1).
+  if ($type) {
+    db_update('user_relationships')
+      ->fields(array(
+        'type' => $type->machine_name,
+      ))
+      ->condition('rid', $relationship->rid)
+      ->condition('type', '')
+      ->execute();
+  }
+}

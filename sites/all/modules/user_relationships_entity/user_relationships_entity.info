@@ -1,0 +1,18 @@
+name = User Relationships Entity
+description = Elevates user relationships into Entities.
+core = 7.x
+package = "User Relationships"
+php = 5.3
+
+dependencies[] = user_relationships
+dependencies[] = entity
+
+files[] = includes/UserRelationshipsController.php
+files[] = includes/UserRelationshipsEntity.php
+
+; Information added by Drupal.org packaging script on 2015-11-08
+version = "7.x-1.x-dev"
+core = "7.x"
+project = "user_relationships_entity"
+datestamp = "1446998940"
+

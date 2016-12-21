@@ -1,0 +1,58 @@
+<?php
+/**
+ * @file
+ * Alter the {user_relationships} table to take on "type" which will be used as
+ * the bundle type.
+ */
+
+/**
+ * Implements hook_schema_alter().
+ */
+function user_relationships_entity_schema_alter(&$schema) {
+  $schema['user_relationships']['fields']['type'] = array(
+    'description' => 'The type of this relationship.',
+    'type' => 'varchar',
+    'length' => 255,
+    'not null' => TRUE,
+    'default' => '',
+  );
+}
+
+/**
+ * Implements hook_install().
+ */
+function user_relationships_entity_install() {
+  // Alter the {user_relationships} table.
+  if (!db_field_exists('user_relationships', 'type')) {
+    // Add the field.
+    $schema = drupal_get_schema('user_relationships');
+    db_add_field('user_relationships', 'type', $schema['fields']['type']);
+
+    // Run through the existing rows and assign type names.
+    $types = user_relationships_types_load();
+    if ($types) {
+      foreach ($types as $type) {
+        db_update('user_relationships')
+          ->fields(array(
+            'type' => $type->machine_name,
+          ))
+          ->condition('rtid', $type->rtid)
+          ->execute();
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function user_relationships_entity_uninstall() {
+  // Remove the field we've added to {user_relationships}.
+  if (db_field_exists('user_relationships', 'type')) {
+    db_drop_field('user_relationships', 'type');
+  }
+}
+
+/**
+ * Update hooks.
+ */
