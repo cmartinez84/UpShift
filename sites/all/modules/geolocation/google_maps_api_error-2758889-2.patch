@@ -1,0 +1,38 @@
+diff --git a/modules/geolocation_googlemaps/geolocation_googlemaps.module b/modules/geolocation_googlemaps/geolocation_googlemaps.module
+index 5233bf6..6eff6db 100644
+--- a/modules/geolocation_googlemaps/geolocation_googlemaps.module
++++ b/modules/geolocation_googlemaps/geolocation_googlemaps.module
+@@ -273,8 +273,14 @@ function geolocation_googlemaps_field_formatter_view($entity_type, $entity, $fie
+ 
+         // Attach CSS and JS files via FAPI '#attached'.
+         $map_element['googlemap']['#attached']['css'][] = drupal_get_path('module', 'geolocation_googlemaps') . '/geolocation_googlemaps.css';
++        $data['sensor'] = 'false';
++        $api_key = variable_get('geolocation_googlemaps_api_key', '');
++        if (!empty($api_key)) {
++          $data['key'] = $api_key;
++        }
++        $query = drupal_http_build_query($data);
+         $map_element['googlemap']['#attached']['js'][] = array(
+-          'data' => '//maps.google.com/maps/api/js?sensor=false',
++          'data' => '//maps.google.com/maps/api/js?' . $query,
+           'type' => 'external',
+         );
+         $map_element['googlemap']['#attached']['js'][] = array(
+@@ -580,9 +586,15 @@ function geolocation_googlemaps_field_widget_form_alter(&$element, &$form_state,
+  */
+ function geolocation_googlemaps_attach_google_js(&$element) {
+   $js_added_already = &drupal_static(__FUNCTION__, FALSE);
+-  if (!$js_added_already) {
++  if (!$js_added_already) {  
++    $data['sensor'] = 'false';
++    $api_key = variable_get('geolocation_googlemaps_api_key', '');
++    if (!empty($api_key)) {
++      $data['key'] = $api_key;
++    }
++    $query = drupal_http_build_query($data);
+     $element['#attached']['js'][] = array(
+-      'data' => '//maps.google.com/maps/api/js?sensor=false',
++      'data' => '//maps.google.com/maps/api/js?' . $query,
+       'type' => 'external',
+     );
+     $element['#attached']['js'][] = array(
