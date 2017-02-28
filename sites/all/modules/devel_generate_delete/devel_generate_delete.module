@@ -1,0 +1,251 @@
+<?php
+
+/**
+ * Save type and id to the devel_generate_delete table. Other modules can use this function to extend the functionality to other types.
+ * @param type $type
+ * @param type $eid
+ * @param type $bundle
+ */
+function devel_generate_insert($type, $eid, $bundle = NULL) {
+  if (!empty($type) && !empty($eid)) {
+    $query = db_insert('devel_generate_delete')
+            ->fields(array(
+              'eid' => $eid,
+              'type' => $type,
+              'bundle' => $bundle,
+            ))->execute();
+  }
+}
+
+/*
+ * Log all nodes created by devel generate.
+ */
+
+function devel_generate_delete_node_insert($node) {
+  // Only perform on nodes created by devel.
+  if (!empty($node->devel_generate)) {
+    devel_generate_insert('node', $node->nid, $node->type);
+  }
+}
+
+/*
+ * Log all users created by devel generate.
+ */
+
+function devel_generate_delete_user_insert(&$edit, $account, $category) {
+  if (isset($edit['devel_generate'])) {
+    devel_generate_insert('user', $account->uid);
+  }
+}
+
+/*
+ * Alter the devel-form to allow us to delete nodes created by devel.
+ */
+
+function devel_generate_delete_form_alter(&$form, &$form_state, $form_id) {
+  if ($form_id === 'devel_generate_content_form' || $form_id === 'devel_generate_users_form') {
+    // Get key of the original field and set title.
+    $key = '';
+    $title = '';
+    $entity_type = '';
+    switch ($form_id) {
+      case 'devel_generate_content_form':
+        $key = 'kill_content';
+        $title = '<strong>Delete all previously generated content</strong> before generating new content.';
+        $entity_type = 'node';
+        break;
+      case 'devel_generate_users_form':
+        $key = 'kill_users';
+        $title = '<strong>Delete all previously generated users</strong> before generating new users.';
+        $entity_type = 'user';
+        break;
+    }
+
+    // Get original field
+    $original_field = $form[$key];
+
+    // Change key of original field, while maintaining order.
+    $keys = array_keys($form);
+    $index = array_search($key, $keys);
+
+    if ($index !== false) {
+      $keys[$index] = 'kill';
+      $form = array_combine($keys, $form);
+    }
+
+    // Change it into a fieldset.
+    $form['kill'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Delete'),
+    );
+
+    // Add original field in the fieldset.
+    $form['kill'][$key] = $original_field;
+
+    // Add a checkbox to delete all generated content
+    $form['kill']['kill_generated'] = array(
+      '#type' => 'checkbox',
+      '#title' => t($title),
+      '#default_value' => FALSE,
+      '#weight' => 2
+    );
+
+    $info = entity_get_info($entity_type);
+    if (count($info['bundles']) > 1) {
+      $bundles = array();
+      foreach ($info['bundles'] as $bundle_key => $bundle) {
+        $bundles[$bundle_key] = $bundle['label'];
+      }
+
+      $form['kill']['kill_generated_bundles'] = array(
+        '#type' => 'checkboxes',
+        '#title' => t('<strong>Delete only these bundles of generated entities.'),
+        '#options' => $bundles,
+        '#weight' => 3,
+      );
+    }
+    array_unshift($form['#submit'], 'devel_generate_delete_form_submit');
+  }
+}
+
+/*
+ * Delete all generated nodes if the checkbox is checked
+ */
+
+function devel_generate_delete_form_submit($form_id, &$form_state) {
+  $entity_type = NULL;
+  switch ($form_id['#form_id']) {
+    case 'devel_generate_content_form':
+      $entity_type = 'node';
+      break;
+    case 'devel_generate_users_form':
+      $entity_type = 'user';
+      break;
+  }
+  if (!empty($form_state['input']['kill_generated'])) {
+    devel_generate_delete_do_delete($entity_type);
+  }
+  else if (!empty($form_state['input']['kill_generated_bundles'])) {
+    devel_generate_delete_do_delete($entity_type, array_filter(array_values($form_state['input']['kill_generated_bundles'])));
+  }
+}
+
+/*
+ * Delete the generated content, use batch of more than 50 need to be deleted.
+ */
+
+function devel_generate_delete_do_delete($entity_type = NULL, $bundles = array()) {
+  if (!empty($entity_type)) {
+    $count = 0;
+    if (!empty($bundles)) {
+      $count = db_select('devel_generate_delete', 'dgd')->fields('dgd', array('id'))->condition('type', $entity_type, '=')->condition('bundle', $bundles, 'IN')->countQuery()->execute()->fetchField();
+    }
+    else {
+      $count = db_select('devel_generate_delete', 'dgd')->fields('dgd', array('id'))->condition('type', $entity_type, '=')->countQuery()->execute()->fetchField();
+    }
+
+    if ($count > 50) {
+      batch_set(devel_generate_delete_batch($entity_type, $bundles));
+    }
+    else {
+      $result = NULL;
+      if (!empty($bundles)) {
+        $result = db_select('devel_generate_delete', 'dgd')->fields('dgd', array('eid'))->condition('type', $entity_type, '=')->condition('bundle', $bundles, 'IN')->execute();
+      }
+      else {
+        $result = db_select('devel_generate_delete', 'dgd')->fields('dgd', array('eid'))->condition('type', $entity_type, '=')->execute();
+      }
+      $ids = array();
+      foreach ($result as $entity) {
+        $ids[] = $entity->eid;
+      }
+      entity_delete_multiple($entity_type, $ids);
+    }
+  }
+}
+
+/*
+ * Implements hook_entity_delete.
+ */
+
+function devel_generate_delete_entity_delete($entity, $type) {
+  $field = NULL;
+  switch ($type) {
+    case 'node':
+      $field = 'nid';
+      break;
+    case 'user':
+      $field = 'uid';
+      break;
+  }
+
+  if (!empty($field)) {
+    db_delete('devel_generate_delete')->condition('eid', $entity->{$field})->condition('type', $type, '=')->execute();  // Empty the log of nodes created by devel    
+  }
+}
+
+/*
+ * Batch function to remove nodes
+ */
+
+function devel_generate_delete_batch($entity_type, $bundles) {
+  $operations = array();
+  $operations[] = array('devel_generate_delete_batch_op', array($entity_type, $bundles));
+  $batch = array(
+    'operations' => $operations,
+    'finished' => 'devel_generate_delete_batch_finished'
+  );
+
+  return $batch;
+}
+
+/*
+ * Batch finished function.
+ */
+
+function devel_generate_delete_batch_finished($success, $results, $operations) {
+  if ($success) {
+    drupal_set_message('Generated entities have been deleted.');
+  }
+  else {
+    drupal_set_message('An error ocurred in the batch action.');
+  }
+}
+
+/*
+ * Batch operation deleting the content.
+ */
+
+function devel_generate_delete_batch_op($entity_type, $bundles, &$context) {
+  if (empty($context['sandbox'])) {
+    $context['sandbox'] = array();
+    $context['sandbox']['progress'] = 0;
+    $result = NULL;
+    if (!empty($bundles)) {
+      $result = db_select('devel_generate_delete', 'dgd')->fields('dgd', array('eid'))->condition('type', $entity_type, '=')->condition('bundle', $bundles, 'IN')->execute();
+    }
+    else {
+      $result = db_select('devel_generate_delete', 'dgd')->fields('dgd', array('eid'))->condition('type', $entity_type, '=')->execute();
+    }
+    $context['sandbox']['ids'] = array();
+    foreach ($result as $entity) {
+      $context['sandbox']['ids'][] = $entity->eid;
+    }
+    $context['sandbox']['max'] = count($context['sandbox']['ids']);
+  }
+
+  $ids = array();
+
+  $limit = 50;
+  // TODO: better function for this?
+  for ($i = 0; $i < $limit; $i ++) {
+    $ids[] = array_shift($context['sandbox']['ids']);
+  }
+
+  entity_delete_multiple($entity_type, $ids);
+
+  $context['sandbox']['progress'] += count($ids);
+  $context['message'] = t('Deleted @progress/@max entities.', array('@progress' => $context['sandbox']['progress'], '@max' => $context['sandbox']['max']));
+
+  $context['finished'] = $context['sandbox']['progress']/$context['sandbox']['max'];
+}
