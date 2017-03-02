@@ -997,6 +997,24 @@ function theme_gmap($variables) {
   // Theming needs to get fixed instead..
   if (isset($map['markers'])) {
     foreach ($map['markers'] as $i => $marker) {
+      $new_text = $map['markers'][$i]['text'];
+      foreach ($map['markers'] as $i2 => $marker2) {
+          if($marker  !== $marker2 &&
+          $marker['longitude'] == $marker2['longitude'] &&
+          $marker['latitude'] == $marker2['latitude'] &&
+          (stripos($map['markers'][$i2]['text'], '<br>') === false)){
+          $new_text .= '<br>' . $map['markers'][$i2]['text'];
+        }
+      }
+      foreach ($map['markers'] as $i3 => $marker3) {
+          if(
+          $marker['longitude'] == $marker3['longitude'] &&
+          $marker['latitude'] == $marker3['latitude']){
+          $map['markers'][$i3]['text'] = $new_text;
+        }
+      }
+    }
+    foreach ($map['markers'] as $i => $marker) {
       if (isset($marker['text'])) {
         $map['markers'][$i]['text'] = '<div class="gmap-popup">' . $marker['text'] . '</div>';
       }
