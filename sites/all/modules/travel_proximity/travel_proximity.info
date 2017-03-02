@@ -1,0 +1,6 @@
+name = Travel Proximity
+description = Prepopulate proximity field for distance and origin with user data.
+package = Custom Modules
+core = 7.x
+files[] = travel_proximity.module
+module_load_include('pages.inc', 'user', 'user)

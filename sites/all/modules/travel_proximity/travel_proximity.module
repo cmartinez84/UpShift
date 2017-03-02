@@ -1,0 +1,15 @@
+<?php
+
+
+function travel_proximity_form_alter(&$form, &$form_state, $form_id){
+  global $user;
+  $user_data = user_load($user->uid);
+  $travel_distance = field_get_items('user', $user_data, 'field_travel_distance');
+  $user_geofield = field_get_items('user', $user_data, 'field_geofield');
+
+
+  if($form_id === "views_exposed_form"){
+    $form['field_geofield_distance']['#default_value']['distance'] = $travel_distance[0]['value'];
+    $form['field_geofield_distance']['#default_value']['origin'] = $user_geofield[0]['geom'];
+  }
+}
