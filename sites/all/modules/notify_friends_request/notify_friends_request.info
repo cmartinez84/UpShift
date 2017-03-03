@@ -1,0 +1,5 @@
+name = Notify Friends of Request
+description = Create a list of friends to send a message to when posting a shift request
+package = Custom Modules
+core = 7.x
+files[] = notify_friends_request.module
