@@ -1,0 +1,5 @@
+name = Entity Reference Access
+description = Give users access to view entity references in autocomplete widget when signing up, prevent "Restricted Access"
+package = Custom Modules
+core = "7.x"
+files[] = entity_reference_access.module
