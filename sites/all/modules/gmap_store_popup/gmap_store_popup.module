@@ -1,0 +1,5 @@
+<?php
+function gmap_store_popup_views_pre_render(&$view){
+  // print_r($view->result);
+  $my_variable = "garlic";
+}

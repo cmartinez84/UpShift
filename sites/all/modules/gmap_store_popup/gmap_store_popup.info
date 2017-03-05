@@ -1,0 +1,5 @@
+name = Change Store Popup
+description = Customize store pop up bubble
+package = Custom Modules
+core = 7.x
+files[] = gmap_store_popup.module
