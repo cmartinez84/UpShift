@@ -1,0 +1,18 @@
+.hidden-geofield{
+  display: none;
+}
+.balloon img:nth-of-type(n+2){
+  display: none;
+}
+h6:nth-of-type(n+2){
+  display: none;
+}
+h6:nth-of-type(n+2) + br{
+  display: none;
+}
+.balloon-field-from + br{
+  display: none;
+}
+.balloon{
+  text-align: center;
+}

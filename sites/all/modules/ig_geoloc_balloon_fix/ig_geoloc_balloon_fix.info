@@ -1,0 +1,7 @@
+name = Ig Geoloc Balloon Fix
+description = Eliminate duplicate field entries per balloon, such as store photo.
+package = Custom Modules
+core = 7.x
+files[] = ig_geoloc_balloon_fix.module
+scripts[] = js/ig_geoloc_balloon_fix.js
+stylesheets[all][] = css/ig_geoloc_balloon_fix.css
