@@ -16,3 +16,6 @@ h6:nth-of-type(n+2) + br{
 .balloon{
   text-align: center;
 }
+input.geofield-proximity-origin{
+  display: none;
+}
