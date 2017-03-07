@@ -1029,29 +1029,9 @@ function social_login_core_form_user_register_form_alter(&$form, &$form_state) {
       $form['account']['name']['#default_value'] = $user_login;
       $form['account']['mail']['#default_value'] = $user_email;
 
-
-
       // To prepopulate custom fields, here is an example for field_first_name and field_last_name:
       $user_firstname = empty($identity['name']['givenName']) ? '' : $identity['name']['givenName'];
       $user_lastname = empty($identity['name']['familyName']) ? '' : $identity['name']['familyName'];
-
-      ///////custom
-      $user_profileUrl = empty($identity['profileUrl']) ? '' : $identity['profileUrl'];
-
-      if(!empty($identity['source']['name'])){
-        if($identity['source']['name'] == "Facebook"){
-          $form['field_facebook_profile']['und'][0]['#default_value']['url'] = $user_profileUrl;
-        }
-        if($identity['source']['name'] == "Google"){
-          $form['field_google_profile']['und'][0]['#default_value']['url'] = $user_profileUrl;
-        }
-      }
-      ////end custom
-
-
-      // $form['field_profileurl']['und'][0]['value']['#default_value'] = $identity['profileUrl'];
-      // $form['field_profile_source']['und'][0]['value']['#default_value'] = $identity['source']['name'] ? $identity['source']['name'] : '';
-
       // If these fields were not provided, guess from displayName:
       if (empty($user_firstname) or empty($user_lastname)) {
         if (!empty($identity['displayName'])) {

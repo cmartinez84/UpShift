@@ -1,0 +1,7 @@
+name = Custom CSS
+description = Custom CSS unrelated to theming.
+package = Custom Modules
+core = 7.x
+files[] = custom_css.module
+scripts[] = js/custom_css.js
+stylesheets[all][] = css/custom_css.css
