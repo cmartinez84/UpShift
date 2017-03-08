@@ -1,0 +1,5 @@
+name = Ajax Shift Request
+description = Ajax node loader for shift requests
+package = Custom Modules
+core = 7.x
+files[] = ajax_shift_request.module
