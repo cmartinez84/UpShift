@@ -3,3 +3,49 @@
   height: 100px;
   object-fit: cover;
 }
+
+
+/*resize header to fit and cover, prevent overflow on view-header*/
+.view-display-id-store_title_logo_header img{
+  width: 100%;
+  height: 110px;
+  object-fit: cover;
+
+}
+
+.view-display-id-store_title_logo_header {
+  position: relative;
+  /*text-align: center;*/
+}
+
+.view-header{
+  overflow: hidden;
+}
+.recenter-title-over-header{
+  position: absolute;;
+  top: 0;
+  margin: 5%;
+  font-size: 3em;
+  color: white;
+}
+
+/*///for user request page//*/
+.view-display-id-user_display_name_block .views-field-field-first-name, .view-display-id-user_display_name_block .views-field-field-last-name{
+ font-size: 3em;
+}
+.view-display-id-user_display_name_block .user-picture{
+  display: inline-block;
+ }
+.view-display-id-user_display_name_block img{
+  border-radius: 50%;
+
+}
+.list-thumbnail img{
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+}
+table *{
+  border: none !important;
+  background: transparent;
+}
