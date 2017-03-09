@@ -1,6 +1,6 @@
 .user-picture img{
   width: 100px;
-  height: 100px;
+  height: 100px !important;
   object-fit: cover;
 }
 
@@ -33,19 +33,55 @@
 .view-display-id-user_display_name_block .views-field-field-first-name, .view-display-id-user_display_name_block .views-field-field-last-name{
  font-size: 3em;
 }
+
 .view-display-id-user_display_name_block .user-picture{
   display: inline-block;
  }
+
 .view-display-id-user_display_name_block img{
   border-radius: 50%;
+}
 
+/*list thumbnail settings*/
+.list-thumbnail .user-picture{
+  width: 40px;
 }
 .list-thumbnail img{
-  border-radius: 50%;
+  border-radius: 100%;
   width: 40px;
-  height: 40px;
+  height: 40px !important;
 }
-/*table *{
+
+
+.teaser-date{
+  font-size: 22px;
+}
+
+.teaser-picture{
+  padding: 0;
+}
+
+.teaser-picture .user-picture{
+  max-width: 100%
+}
+.teaser-picture .user-picture img{
+  border-radius: 100%;
+  height: 76px !important;
+  width: 76px !important;
+}
+/*table settings*/
+/*table, table *, table tr, table td{
   border: none !important;
-  background: transparent;
+  background: white;
+}
+.views-table  thead{
+  display: none !important
 }*/
+.list-thumbnail .user-picture{
+  position: relative;
+}
+/*align dates vertically in table*/
+ .views-field-field-time a{
+   line-height: 1.5em;
+   font-size: 1.5em;
+ }

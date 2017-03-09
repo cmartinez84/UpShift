@@ -5,7 +5,6 @@ function ajax_shift_request_menu() {
             'access arguments' => array('access content'),
             'page callback' => 'mymodule_ajax_callback',
             'page arguments' => array(1,2),
-            'access callback' => TRUE,
             'type' => MENU_CALLBACK,
     );
     return $items;
@@ -18,12 +17,13 @@ function mymodule_ajax_callback($js, $node_id) {
   if ($js == 'nojs') {
     drupal_goto('node/' . $node->nid);
   }
-
   $rendered_view_details = views_embed_view('requests', 'individual_request_display_block', $node_id);
   $rendered_view_map = views_embed_view('requests', 'individual_request_map_block', $node_id);
   $commands = array();
+  // print_r($group_id);
   $commands[0] = ajax_command_html('#shift-request-ajax-wrapper  ', $rendered_view_details);
   $commands[1] = ajax_command_html('#shift-request-map-ajax-wrapper  ', $rendered_view_map);
+
   print ajax_render($commands);
   exit;
 }
