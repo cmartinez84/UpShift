@@ -70,13 +70,17 @@
   width: 76px !important;
 }
 /*table settings*/
-/*table, table *, table tr, table td{
+.requests table,.requests table *,.requests table tr,.requests table td{
   border: none !important;
   background: white;
 }
-.views-table  thead{
+.requests .views-table  thead{
   display: none !important
-}*/
+}
+.requests td{
+  border-bottom: 1px solid black;
+}
+
 
 .list-thumbnail .user-picture{
   position: relative;
@@ -187,4 +191,22 @@ input#edit-nick{
 }
 .tb-megamenu-nav li:last-of-type a{
   color: #e54e4b !important;
+}
+
+/*friends requests view alter*/
+.sticky-table .user-picture{
+  max-width: none;
+}
+.sticky-table .user-picture img{
+  border-radius: 100%;
+}
+
+.profile .user-picture{
+  max-width: none;
+}
+.profile .user-picture img{
+  border-radius: 100%;
+}
+body.front .page-title{
+  display: none;
 }
