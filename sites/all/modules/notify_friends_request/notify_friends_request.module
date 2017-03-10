@@ -5,15 +5,30 @@ function notify_friends_request_form_alter(&$form, &$form_state, $form_id){
   //replaces on + shift request form the list of people to only those current user is friends with
   if(isset($form['type'])){
     if($form['type']['#value'] === 'shift_request'){
+
       global $user;
 
-      module_load_include('module', 'user_relationships', 'user_relationships');
-      module_load_include('pages.inc', 'user', 'user');
+      // this line of code may actually not be ncessary. consider removing
+      // module_load_include('module', 'user_relationships', 'user_relationships');
+      // module_load_include('pages.inc', 'user', 'user');
 
+      //get user store id
       $user_friends = user_relationships_load(array("user" => $user->uid));
+      $user_fields_data = user_load($user->uid);
+      $user_store_id = $user_fields_data->field_home_store['und'][0]['target_id'];
+
+      //query database for users with store id as target id in home field
+      $query = new EntityFieldQuery();
+      $query->entityCondition('entity_type', 'user')
+        ->fieldCondition('field_home_store', 'target_id', $user_store_id, '=');
+      $result = $query->execute();
+      $users_coworker_ids = array_keys($result['user']);
+
 
       $user_friend_id_output = [];
       $user_friend_associative_id_name = [];
+      $user_coworker_associative_id_name = [];
+
 
       foreach ($user_friends as $key => $user_friend) {
         if($user_friend->requester_id === $user->uid){
@@ -23,15 +38,29 @@ function notify_friends_request_form_alter(&$form, &$form_state, $form_id){
           $user_friend_id_output[] = $user_friend->requester_id;
         }
       }
-
+      //build friends list
       foreach ($user_friend_id_output as $key => $user_id) {
         $friend_data = user_load($user_id);
-        $friend_name = $friend_data->name;
-        $user_friend_associative_id_name[$user_id] = $friend_name;
+        $friend_first_name = $friend_data->field_first_name['und'][0]['value'];
+        $friend_last_name = $friend_data->field_last_name['und'][0]['value'];
+        $user_friend_associative_id_name[$user_id] = $friend_first_name  . ' ' . $friend_last_name;
       }
 
-        $form['field_friends_of_poster1']['und']['#options'] = $user_friend_associative_id_name;
-        $form['field_friends_of_poster1']['#attributes']['checked'] = 'checked';
+      //build coworkers list
+      foreach ($users_coworker_ids as $key => $user_id) {
+        if($user_id != $user->uid){
+          $friend_data = user_load($user_id);
+          $friend_first_name = $friend_data->field_first_name['und'][0]['value'];
+          $friend_last_name = $friend_data->field_last_name['und'][0]['value'];
+          $user_coworker_associative_id_name[$user_id] = $friend_first_name  . ' ' . $friend_last_name;
+        }
+      }
+
+      $form['field_friends_of_poster1']['und']['#options'] = $user_friend_associative_id_name;
+      $form['field_coworkers_of_poster']['und']['#options'] = $user_coworker_associative_id_name;
+
+        //not working. retry later
+        // $form['field_friends_of_poster1']['#attributes']['checked'] = 'checked';
     }
   }
 }
