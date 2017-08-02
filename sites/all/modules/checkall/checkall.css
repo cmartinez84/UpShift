@@ -1,0 +1,19 @@
+
+/* Allow themers style the "check all" / "uncheck all" actions. */
+div.form-checkall ul.checkall-action {
+  margin: 0;
+  padding: 0;
+}
+
+.checkall-action li {
+  font-size: .85em;
+  list-style: none;
+}
+
+.checkall-action li {
+  display: inline;
+}
+
+.checkall-action li + li:before {
+    content: " | ";
+}

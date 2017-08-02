@@ -1,0 +1,242 @@
+<?php
+
+/**
+ * @file
+ * Extends FormAPI checkboxes with the 'checkall' behavior.
+ */
+
+/**
+ * Implementation of hook_form_alter().
+ */
+function checkall_form_alter(&$form, $form_state, $form_id) {
+  $form['#after_build'][] = 'checkall_form_after_build';
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function checkall_form_field_ui_field_edit_form_alter(&$form, $form_state) {
+  $instance = $form['#instance'];
+  if ($instance['widget']['type'] == 'options_buttons') {
+    $field = $form['#field'];
+    if (empty($form['instance']['settings'])) {
+      $form['instance']['settings'] = array();
+    }
+    $form['instance']['settings'] += checkall_widget_settings_form($field, $instance);
+  }
+}
+
+/**
+ * Implements hook_element_info().
+ */
+function checkall_element_info() {
+  $elements['options_buttons '] = array('#after_build' => array('checkall_element_process'));
+  return $elements;
+}
+
+/**
+ * Implements hook_field_widget_info_alter().
+ */
+function checkall_field_widget_info_alter(&$info) {
+  if (isset($info['options_buttons']['settings'])) {
+    $info['options_buttons']['settings'] += array('checkall' => FALSE);
+  }
+}
+
+/**
+ * Configuration form for checkall settings for a field instance.
+ */
+function checkall_widget_settings_form($field, $instance) {
+  $widget = $instance['widget'];
+  $settings = $instance['settings'];
+
+  $form['checkall'] = array(
+    '#title' => t('Checkall settings'),
+    '#type' => 'fieldset',
+    '#collapsible' => TRUE,
+    '#collapsed' => FALSE,
+    '#weight' => 2,
+  );
+  $form['checkall']['checkall'] = array(
+    '#title' => t('Include checkall options'),
+    '#type' => 'radios',
+    '#options' => array(
+      0 => t('Disabled'),
+      1 => t('Enabled')
+    ),
+    '#default_value' => isset($settings['checkall']['checkall']) ? $settings['checkall']['checkall'] : 0,
+    '#description' => t('Enable this to display checkall options near checkbox groups when this field is configured to accept multiple values.'),
+  );
+  $form['checkall']['checkall-check-all'] = array(
+    '#type' => 'checkbox',
+    '#title' => 'Show Check All Link',
+    '#default_value' => isset($settings['checkall']['checkall-check-all']) ? $settings['checkall']['checkall-check-all'] : 1,
+    '#states' => array(
+      'visible' => array(
+        ':input[name="instance[settings][checkall][checkall]"]' => array(
+          'value' => 1,
+        ),
+      ),
+    ),
+  );
+  $form['checkall']['checkall-toggle'] = array(
+    '#type' => 'checkbox',
+    '#title' => 'Show Toggle Link',
+    '#default_value' => isset($settings['checkall']['checkall-toggle']) ? $settings['checkall']['checkall-toggle'] : 1,
+    '#states' => array(
+      'visible' => array(
+        ':input[name="instance[settings][checkall][checkall]"]' => array(
+          'value' => 1,
+        ),
+      ),
+    ),
+  );
+  $form['checkall']['checkall-uncheck-all'] = array(
+    '#type' => 'checkbox',
+    '#title' => 'Show Uncheck All Link',
+    '#default_value' => isset($settings['checkall']['checkall-uncheck-all']) ? $settings['checkall']['checkall-uncheck-all'] : 1,
+    '#states' => array(
+      'visible' => array(
+        ':input[name="instance[settings][checkall][checkall]"]' => array(
+          'value' => 1,
+        ),
+      ),
+    ),
+  );
+  return $form;
+}
+
+/**
+ * After build callback.
+ */
+function checkall_form_after_build($elements, &$form_state) {
+  checkall_form_after_build_recursive($elements, $form_state);
+  return $elements;
+}
+
+/**
+ * Helper function to find elements with '#checkall' attribute recursively.
+ */
+function checkall_form_after_build_recursive(&$elements, &$form_state, $checkall = NULL, $settings = array()) {
+  foreach (element_children($elements) as $key) {
+    if (isset($elements[$key]) && $elements[$key]) {
+
+      if (isset($checkall)) {
+        // Inherit checkall attribute if specified by the caller.
+        $children_checkall = $checkall;
+        $children_settings = $settings;
+      }
+      elseif (!empty($elements[$key]['#checkall'])) {
+        // Inherit checkall attribute if specified in the form element.
+        $children_checkall = $elements[$key]['#checkall'];
+
+        // Enable, but allow overrides
+        $elements[$key] += array(
+          '#checkall-check-all' => TRUE,
+          '#checkall-toggle' => TRUE,
+          '#checkall-uncheck-all' => TRUE,
+        );
+
+        $children_settings = array(
+          'checkall_check_all' => $elements[$key]['#checkall-check-all'],
+          'checkall_toggle' => $elements[$key]['#checkall-toggle'],
+          'checkall_uncheck_all' => $elements[$key]['#checkall-uncheck-all'],
+        );
+      }
+      else {
+        // Assume no checkall attribute has been specified.
+        $children_checkall = NULL;
+        $children_settings = array();
+
+        // Inherit checkall attribute if specified in CCK field settings.
+        if (isset($elements[$key]['#type']) && ($elements[$key]['#type'] == 'container') && isset($elements['#entity']->type)) {
+          $field = field_info_instance('node', $key, $elements['#entity']->type);
+          if (!empty($field) && isset($field['settings']) && !empty($field['settings']['checkall'])) {
+            $children_checkall = TRUE;
+            $children_settings = array(
+              'checkall_check_all' => $field['settings']['checkall']['checkall-check-all'],
+              'checkall_toggle' => $field['settings']['checkall']['checkall-toggle'],
+              'checkall_uncheck_all' => $field['settings']['checkall']['checkall-uncheck-all'],
+            );
+          }
+        }
+      }
+
+      checkall_form_after_build_recursive($elements[$key], $form_state, $children_checkall, $children_settings);
+    }
+  }
+  if (isset($checkall) && isset($elements['#type']) && $elements['#type'] == 'checkboxes') {
+    $elements['#checkall'] = $checkall;
+    $elements['#checkall-check-all'] = $children_settings['checkall_check_all'];
+    $elements['#checkall-toggle'] = $children_settings['checkall_toggle'];
+    $elements['#checkall-uncheck-all'] = $children_settings['checkall_uncheck_all'];
+    $elements = checkall_element_process($elements);
+  }
+}
+
+/**
+ * Process the checkall extension for the checkboxes element.
+ */
+function checkall_element_process($element) {
+  // See if the #checkall flag is present.
+  if (!empty($element['#checkall'])) {
+    $class = is_string($element['#checkall']) ? trim($element['#checkall']) : '';
+    if (empty($class)) {
+      $class = 'checkall-'. $element['#id'];
+    }
+
+    // Append classes to the checkboxes element.
+    if (!isset($element['#attributes'])) {
+      $element['#attributes'] = array();
+    }
+    if (!isset($element['#attributes']['class'])) {
+      $element['#attributes']['class'] = array();
+    }
+
+    $element['#attributes']['class'][] = 'form-checkall';
+    $element['#attributes']['class'][] = $class;
+
+    // Append class to the checkboxes items.
+    foreach (element_children($element) as $key) {
+      if ($element[$key]['#type'] == 'checkbox') {
+        if (!isset($element[$key]['#attributes'])) {
+          $element[$key]['#attributes'] = array();
+        }
+        if (!isset($element[$key]['#attributes']['class'])) {
+          $element[$key]['#attributes']['class'] = array();
+        }
+
+        $element[$key]['#attributes']['class'][] = $class;
+      }
+    }
+
+    if (!isset($element['#attached'])) {
+      $element['#attached'] = array();
+    }
+    if (!isset($element['#attached']['css'])) {
+      $element['#attached']['css'] = array();
+    }
+    if (!isset($element['#attached']['js'])) {
+      $element['#attached']['js']  = array();
+    }
+
+    // Append the unique checkboxes class to Drupal.settings.checkall.
+    $element['#attached']['js'][] = array(
+      'data' => array('checkall' => array(
+        'groups' => $class,
+        'show_check_all' => $element['#checkall-check-all'],
+        'show_toggle' => $element['#checkall-toggle'],
+        'show_uncheck_all' => $element['#checkall-uncheck-all']
+      )),
+      'type' => 'setting',
+    );
+
+    // Add our stylesheet and javascript files to the page.
+    $element['#attached']['css'][] = drupal_get_path('module', 'checkall') . '/checkall.css';
+
+    //drupal_add_js(drupal_get_path('module', 'checkall') .'/checkall.js',array('type'=>'file','cache'=>FALSE));
+    $element['#attached']['js'][] = drupal_get_path('module', 'checkall') . '/checkall.js';
+  }
+
+  return $element;
+}

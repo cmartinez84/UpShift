@@ -1,0 +1,83 @@
+<?php
+
+/**
+ * @file
+ * Example module for the checkall extension to Drupal checkboxes elements.
+ */
+
+/**
+ * Implementation of hook_theme().
+ */
+function checkall_example_user_permissions_theme() {
+  return array(
+    'checkall_example_user_permissions_form' => array(
+      'arguments' => array('form' => NULL),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_form_alter().
+ */
+function checkall_example_user_permissions_form_alter(&$form, $form_state, $form_id) {
+  if ($form_id == 'user_admin_perm' && isset($form['checkboxes']) && is_array($form['checkboxes'])) {
+    foreach (array_keys($form['checkboxes']) as $rid) {
+      if (isset($form['checkboxes'][$rid]['#type']) && $form['checkboxes'][$rid]['#type'] == 'checkboxes') {
+        $form['checkboxes'][$rid]['#checkall'] = 'checkall-example-role-'. $rid;
+      }
+    }
+    $form['#theme'] = 'checkall_example_user_permissions_form';
+
+    // Replace the submit button with a warning that will be displayed on top of form.
+    $form['submit'] = array(
+      '#value' => '<div class="warning">'. t('This form has been altered by the Checkall example module and cannot be submitted as you may easilly break the persmissions of your site while playing with the checkall behavior. The only purpose of this module is just to show an example on how to use the checkall behavior.') .'</div>'
+    );
+  }
+}
+
+/**
+ * Theme the administer permissions page.
+ *
+ * This function is a copy of theme_user_admin_perm() located in
+ * modules/user/user.admin.inc, but this time we use an additional CSS
+ * class for the role headers. The same exact name we just used above
+ * for the #checkall attribute of the checkboxes elements.
+ */
+function theme_checkall_example_user_permissions_form($form) {
+  $roles = user_roles();
+  foreach (element_children($form['permission']) as $key) {
+    // Don't take form control structures
+    if (is_array($form['permission'][$key])) {
+      $row = array();
+      // Module name
+      if (is_numeric($key)) {
+        $row[] = array('data' => t('@module module', array('@module' => drupal_render($form['permission'][$key]))), 'class' => 'module', 'id' => 'module-'. $form['permission'][$key]['#value'], 'colspan' => count($form['role_names']) + 1);
+      }
+      else {
+        $row[] = array('data' => drupal_render($form['permission'][$key]), 'class' => 'permission');
+        foreach (element_children($form['checkboxes']) as $rid) {
+          if (is_array($form['checkboxes'][$rid])) {
+            $row[] = array('data' => drupal_render($form['checkboxes'][$rid][$key]), 'class' => 'checkbox', 'title' => $roles[$rid] .' : '. t($key));
+          }
+        }
+      }
+      $rows[] = $row;
+    }
+  }
+  $header[] = (t('Permission'));
+  foreach (element_children($form['role_names']) as $rid) {
+    if (is_array($form['role_names'][$rid])) {
+      /**
+       * CHECKALL NOTE:
+       *
+       * Note that we're appending a new CSS class name here that matches the
+       * same name we used for the #checkall attribute of the checkboxes.
+       */
+      $header[] = array('data' => drupal_render($form['role_names'][$rid]), 'class' => 'checkbox checkall-example-role-'. $rid);
+    }
+  }
+  $output = drupal_render($form['submit']);
+  $output .= theme('table', $header, $rows, array('id' => 'permissions'));
+  $output .= drupal_render($form);
+  return $output;
+}

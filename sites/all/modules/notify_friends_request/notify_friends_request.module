@@ -58,9 +58,9 @@ function notify_friends_request_form_alter(&$form, &$form_state, $form_id){
 
       $form['field_friends_of_poster1']['und']['#options'] = $user_friend_associative_id_name;
       $form['field_coworkers_of_poster']['und']['#options'] = $user_coworker_associative_id_name;
-
         //not working. retry later
         // $form['field_friends_of_poster1']['#attributes']['checked'] = 'checked';
     }
   }
+
 }

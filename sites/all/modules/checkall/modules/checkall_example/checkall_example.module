@@ -1,0 +1,44 @@
+<?php
+
+/**
+ * @file
+ * Example module for the checkall extension to Drupal checkboxes elements.
+ */
+
+/**
+ * Implementation of hook_help().
+ */
+function checkall_example_help($path, $arg) {
+  switch ($path) {
+    case 'checkall-example':
+      return '<p>'. t('Example page for the checkall extension to Drupal checkboxes elements.') .'</p>';
+  }
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function checkall_example_theme() {
+  return array(
+    'checkall_example_page' => array(
+      'arguments' => array('form' => NULL),
+      'file' => 'checkall_example.pages.inc',
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_menu().
+ */
+function checkall_example_menu() {
+  $items = array();
+  $items['checkall-example'] = array(
+    'title' => 'Checkall example page',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('checkall_example_page'),
+    'access arguments' => array('administer site configuration'),
+    'description' => 'Example page for the checkall extension to Drupal checkboxes elements.',
+    'file' => 'checkall_example.pages.inc',
+  );
+  return $items;
+}

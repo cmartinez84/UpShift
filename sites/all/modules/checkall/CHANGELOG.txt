@@ -1,0 +1,61 @@
+
+6.x-2.x-dev
+===========
+
+
+
+6.x-2.4
+=======
+
+Release notes:
+- Upgrading does not require running update.php.
+
+Features:
+- #541110 by bshensky: Add "Toggle" alongside "Check all" and "Uncheck all" links in UI.
+- #541120 by bshensky: Expose the #checkall condition as a form element attribute in the CCK form builder field definition interface.
+- #553620 by Amitaibu: Add checkall options to field settings form for nodereference/userreference.
+- #553620 Add checkall options to field settings form for content taxonomy buttons.
+- Added CHANGELOG.txt.
+
+
+6.x-2.3
+=======
+
+Release notes:
+- Upgrading does not require running update.php.
+
+Features:
+- Extend usage of checkall attribute to elements that wrap checkboxes, such us optionwidgets_buttons, content_taxonomy_options, etc.
+
+Bugfixes:
+- Single group of checkboxes does not work correctly due to Drupal.settings being a string rather than array.
+
+
+6.x-2.2
+=======
+
+Release notes:
+- Upgrading does not require running update.php.
+
+Features:
+- Added support for several checkboxes groups rendered in tables.
+- Added a couple of example modules.
+
+
+6.x-2.1
+=======
+
+Release notes:
+- Upgrading does not require running update.php.
+
+Features:
+- Added blur() effect to click events.
+
+Bugfixes:
+- #397532 by vgarvardt: Checkall does not trigger onChange event.
+
+
+6.x-2.0
+=======
+
+- First release of the Checkall module for Drupal 6.

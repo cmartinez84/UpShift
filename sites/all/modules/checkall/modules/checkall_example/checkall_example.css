@@ -1,0 +1,9 @@
+
+#checkall-example-page div.checkall-example-filter-by-month .form-item {
+  display: block;
+  float: left;
+  width: 200px;
+}
+#checkall-example-page .description {
+  clear: both;
+}
