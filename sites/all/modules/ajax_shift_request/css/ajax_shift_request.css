@@ -1,0 +1,36 @@
+/*style individual comments*/
+/*#shift-request-ajax-comments-wrapper ul li{
+  list-style-type: none !important;
+}
+#shift-request-ajax-comments-wrapper li.views-row{
+  padding: 0;
+}
+#shift-request-ajax-comments-wrapper .views-field-comment-body div p{
+  margin-bottom: 5px;
+}*/
+/*get rid of replay html options*/
+#shift-request-ajax-wrapper fieldset{
+  display: none;
+}
+#shift-request-ajax-wrapper #edit-author--2{
+  display: none;
+}
+
+/*style comment section*/
+#shift-request-ajax-wrapper section#comments{
+  padding: 10px;
+}
+#shift-request-ajax-wrapper h2.title{
+  display: none;
+}
+#shift-request-ajax-wrapper .permalink{
+  display: none;
+}
+#shift-request-ajax-wrapper section img{
+  border-radius: 100%;
+  width: 40px !important;
+  height: 40px !important;
+}
+#shift-request-ajax-wrapper article.comment{
+  padding: 10px;
+}
